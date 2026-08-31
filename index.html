@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DiploClear — diplomatic flight clearance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#131A22; --ink-soft:#56616E; --ink-faint:#8B95A1;
+    --paper:#FFFFFF; --mist:#EEF1F5; --panel:#F7F9FB; --line:#E0E6EC;
+    --navy:#163E5C; --navy-900:#0C2233; --navy-700:#143A56;
+    --amber:#C98A1B; --cleared:#1E8E5A; --pending:#C0860F; --blocked:#C0392B;
+    --stamp:#B23A2E;
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    --r:10px;
+  }
+  /* ---------- dark theme ---------- */
+  [data-theme="dark"]{
+    --ink:#E7EDF3; --ink-soft:#A0ACB9; --ink-faint:#6E7A87;
+    --paper:#161E27; --mist:#0A0E13; --panel:#1B2530; --line:#2A3540;
+    --navy:#2E6CA6; --navy-900:#0A1620; --navy-700:#21507A;
+    --amber:#E3A73E; --cleared:#34B57E; --pending:#D8A33E; --blocked:#E05B4C;
+    --stamp:#D55749;
+  }
+  [data-theme="dark"] .step{ background:#11314A; color:#9CC6EC; }
+  [data-theme="dark"] .drop .ic{ background:#11314A; }
+  [data-theme="dark"] .stamp{ background:rgba(213,87,73,.07); }
+  [data-theme="dark"] .seg button.on{ background:var(--navy-700); color:#EAF2FA; }
+  [data-theme="dark"] .topbar, [data-theme="dark"] .card{ box-shadow:0 1px 0 rgba(255,255,255,.02); }
+  [data-theme="dark"] .f select{ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236E7A87' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+  html,body,.card,.topbar,.f input,.f select,.strip,.btn{ transition:background-color .25s ease, border-color .25s ease, color .25s ease; }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:var(--sans);color:var(--ink);background:var(--mist);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:var(--mono);font-feature-settings:"tnum" 1;}
+  button{font-family:var(--sans);cursor:pointer}
+  ::selection{background:#cfe0ee}
+
+  /* ---------- mark ---------- */
+  .mark{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+  .mark .glyph{width:34px;height:34px;border-radius:9px;background:var(--navy);display:grid;place-items:center;flex:none}
+  .mark .glyph svg{width:19px;height:19px;display:block}
+  .mark .wm{font-weight:600;letter-spacing:-.01em;font-size:18px;line-height:1}
+  .mark .wm b{font-weight:700}
+  .mark .wm span{color:var(--amber)}
+
+  /* ---------- login ---------- */
+  #login{position:fixed;inset:0;z-index:50;display:grid;grid-template-columns:minmax(380px,460px) 1fr;background:var(--navy-900);}
+  #login .panel{background:var(--navy-900);color:#EAF1F7;padding:48px 46px;display:flex;flex-direction:column;justify-content:space-between;position:relative;z-index:2;border-right:1px solid rgba(255,255,255,.08)}
+  #login .panel .wm{font-size:21px;color:#fff}
+  #login .panel .glyph{background:#fff}
+  #login .panel .glyph svg path{fill:var(--navy)}
+  #login h1{font-size:34px;line-height:1.12;font-weight:600;letter-spacing:-.02em;margin:0 0 14px}
+  #login h1 em{font-style:normal;color:var(--amber)}
+  #login p.sub{color:#9FB3C4;font-size:15px;margin:0 0 30px;max-width:34ch}
+  #login .field{margin-bottom:14px}
+  #login label{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#7E94A6;margin-bottom:6px}
+  #login input{width:100%;height:44px;border-radius:var(--r);border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;padding:0 14px;font-family:var(--mono);font-size:15px;letter-spacing:.05em}
+  #login input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(201,138,27,.25)}
+  #login .enter{margin-top:8px;width:100%;height:46px;border:none;border-radius:var(--r);background:var(--amber);color:#2A1B02;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s}
+  #login .enter:hover{filter:brightness(1.06)}
+  #login .foot{font-size:12px;color:#6B8093;line-height:1.6}
+  #login .foot .badge{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid rgba(255,255,255,.16);border-radius:5px;padding:2px 7px;margin-right:6px;color:#9FB3C4}
+  #login .hero{position:relative;background:var(--navy-900);overflow:hidden}
+  #login .hero .img{position:absolute;inset:0;background:#0c2334 url('assets/hero.png') center right / cover no-repeat;}
+  #login .hero .scrim{position:absolute;inset:0;background:linear-gradient(90deg, rgba(7,17,25,.85) 0%, rgba(7,17,25,.25) 35%, rgba(7,17,25,.05) 100%)}
+  #login .hero .tagline{position:absolute;left:40px;bottom:36px;right:40px;color:#cfe0ee;font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+
+  /* ---------- console shell ---------- */
+  #console{display:none;min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:20;background:var(--paper);border-bottom:1px solid var(--line);height:58px;display:flex;align-items:center;gap:18px;padding:0 22px}
+  .topbar .sp{flex:1}
+  .stat{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 12px}
+  .stat .ic{color:var(--cleared)}
+  .stat .v{font-family:var(--mono);font-weight:600;font-size:14px;line-height:1}
+  .stat .l{font-size:11px;color:var(--ink-faint);line-height:1.1}
+  .topbar .who{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-soft)}
+  .topbar .who .av{width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;font-family:var(--mono)}
+  .iconbtn{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--paper);display:grid;place-items:center;color:var(--ink-soft)}
+  .iconbtn:hover{background:var(--panel)}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:22px}
+  .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;align-items:start}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px}
+  .card .hd{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .step{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--navy);background:#E7F0F7;border-radius:6px;padding:3px 8px}
+  .card .hd h2{font-size:15.5px;font-weight:600;margin:0}
+  .card .hd .note{margin-left:auto;font-size:12px;color:var(--ink-faint);display:flex;align-items:center;gap:6px}
+  .bd{padding:18px}
+
+  /* form */
+  .fgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px 14px}
+  .f label{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:5px}
+  .f input,.f select{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:0 11px;font-size:14px;color:var(--ink);font-family:var(--mono);letter-spacing:.02em}
+  .f select{font-family:var(--sans);letter-spacing:0;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238B95A1' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+  .f input:focus,.f select:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
+  .f.wide{grid-column:1 / -1}
+  .toggle{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--ink-soft)}
+  .switch{position:relative;width:40px;height:22px;border-radius:20px;background:#cfd6de;flex:none;transition:background .18s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch.on{background:var(--cleared)}
+  .switch.on::after{transform:translateX(18px)}
+  #dgfields{display:none;margin-top:13px}
+  #dgfields.show{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .poc{margin-top:13px;font-size:12px;color:var(--ink-faint);display:flex;align-items:center;gap:7px}
+
+  /* preset bar */
+  .presetbar{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .presetbar .lbl{font-size:12px;color:var(--ink-faint)}
+  .presetbar select{height:32px;border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:0 28px 0 10px;font-size:13px}
+  .ghost{height:32px;border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:0 11px;font-size:12.5px;color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}
+  .ghost:hover{background:var(--panel)}
+
+  /* countries */
+  .legend{margin-left:auto;font-size:11.5px;color:var(--ink-faint);display:flex;gap:12px}
+  .legend i{display:inline-flex;align-items:center;gap:5px;font-style:normal}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .d-cl{background:var(--cleared)} .d-pe{background:var(--pending)} .d-bl{background:var(--blocked)}
+  .crow{display:flex;align-items:center;gap:12px;padding:11px 6px;border-top:1px solid var(--line)}
+  .crow:first-child{border-top:none}
+  .chk{width:18px;height:18px;border-radius:5px;border:1.5px solid #c2cad3;flex:none;display:grid;place-items:center;color:#fff;transition:.12s}
+  .crow.on .chk{background:var(--navy);border-color:var(--navy)}
+  .crow .nm{flex:1;font-size:14.5px}
+  .crow .iso{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  .fmt{font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--ink-soft);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .lead{font-family:var(--mono);font-size:12px;color:var(--ink-soft);min-width:58px;text-align:right}
+  .genbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}
+  .gen{border:none;border-radius:10px;background:var(--navy);color:#fff;font-weight:600;font-size:14.5px;height:44px;padding:0 20px;display:inline-flex;align-items:center;gap:9px;transition:filter .15s}
+  .gen:hover{filter:brightness(1.12)}
+  .genbar .hint{font-size:12px;color:var(--ink-faint);display:flex;align-items:center;gap:6px}
+
+  /* clearance strips */
+  .strips-hd{display:flex;align-items:center;gap:10px;margin:26px 2px 12px}
+  .strips-hd h2{font-size:16px;font-weight:600;margin:0}
+  .strips-hd .count{font-family:var(--mono);font-size:12px;color:var(--ink-faint)}
+  .empty{border:1px dashed var(--line);border-radius:14px;background:var(--paper);padding:34px;text-align:center;color:var(--ink-faint);font-size:14px}
+  .strip{position:relative;display:grid;grid-template-columns:5px 150px 1fr 132px 150px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:11px;overflow:hidden;opacity:0;transform:translateY(8px);animation:rise .42s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .strip .bar{align-self:stretch}
+  .strip .co{padding:14px 16px}
+  .strip .co .c{font-size:15.5px;font-weight:600;line-height:1.1}
+  .strip .co .iso{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:3px;letter-spacing:.05em}
+  .strip .data{display:flex;flex-wrap:wrap;gap:5px 20px;padding:12px 8px;border-left:1px solid var(--line)}
+  .strip .data .kv{min-width:96px}
+  .strip .data .k{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint)}
+  .strip .data .v{font-family:var(--mono);font-size:13.5px;font-weight:500}
+  .stampwrap{display:grid;place-items:center;border-left:1px dashed var(--line);align-self:stretch}
+  .stamp{width:96px;height:96px;border-radius:50%;border:2px solid var(--stamp);color:var(--stamp);display:grid;place-items:center;text-align:center;transform:rotate(-8deg);opacity:.9;position:relative;background:rgba(178,58,46,.03)}
+  .stamp::before{content:"";position:absolute;inset:6px;border:1px solid var(--stamp);border-radius:50%;opacity:.6}
+  .stamp .t{font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.12em;line-height:1.25}
+  .stamp .n{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;margin-top:2px;opacity:.85}
+  .strip .act{display:flex;flex-direction:column;gap:7px;padding:12px 16px;border-left:1px solid var(--line)}
+  .strip .act .dl{height:34px;border:1px solid var(--navy);color:var(--navy);background:var(--paper);border-radius:8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+  .strip .act .dl:hover{background:#eef4f9}
+  .strip .act .ver{font-family:var(--mono);font-size:11px;color:var(--ink-faint);text-align:center}
+  .strip .st{position:absolute;top:10px;right:152px;font-size:11px;font-family:var(--mono);color:var(--cleared);display:flex;align-items:center;gap:5px}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;display:flex;align-items:center;gap:9px;opacity:0;pointer-events:none;transition:.25s;z-index:60}
+  .toast.show{opacity:1;transform:translateX(-50%)}
+  .toast .ic{color:#6ee0a0}
+
+  @media (max-width:980px){ .grid{grid-template-columns:1fr} #login{grid-template-columns:1fr} #login .hero{display:none} .strip{grid-template-columns:5px 1fr;grid-auto-flow:row} .strip .data,.stampwrap,.strip .act{border-left:none;border-top:1px solid var(--line)} .strip .st{display:none} }
+  @media (prefers-reduced-motion:reduce){ .strip{animation:none;opacity:1;transform:none} .toast{transition:opacity .2s} }
+
+  /* entry path */
+  .entrybar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line)}
+  .seg{display:inline-flex;background:var(--mist);border-radius:9px;padding:3px}
+  .seg button{border:none;background:transparent;border-radius:7px;padding:7px 13px;font-size:13px;font-weight:500;color:var(--ink-soft)}
+  .seg button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .entryhint{font-size:12px;color:var(--ink-faint)}
+  #importview{display:none;padding:30px 18px}
+  #importview.show{display:block}
+  .drop{border:1.5px dashed var(--line);border-radius:12px;background:var(--panel);padding:38px;text-align:center}
+  .drop .ic{width:46px;height:46px;border-radius:11px;background:#E7F0F7;color:var(--navy);display:grid;place-items:center;margin:0 auto 12px}
+  .drop h3{margin:0 0 5px;font-size:16px;font-weight:600}
+  .drop p{margin:0 auto 16px;font-size:13.5px;color:var(--ink-faint);max-width:42ch}
+  .drop .pick{border:1px solid var(--navy);color:var(--navy);background:var(--paper);border-radius:9px;height:40px;padding:0 18px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:8px}
+  .drop .pick:hover{background:#eef4f9}
+  .drop .tmpl{margin-top:15px;font-size:12.5px;color:var(--ink-soft)}
+  .drop .tmpl a{color:var(--navy);font-weight:500;cursor:pointer;text-decoration:underline}
+  /* tail picker */
+  .tailbtn{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);display:flex;align-items:center;gap:8px;padding:0 11px;font-size:14px;color:var(--ink);text-align:left;cursor:pointer}
+  .tailbtn:hover{border-color:var(--navy)}
+  .tailbtn .mono{flex:1}
+  .tailbtn .cnt{font-size:11px;color:var(--ink-faint);font-family:var(--mono)}
+  .modal{position:fixed;inset:0;z-index:70;background:rgba(12,34,51,.5);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.show{display:flex}
+  .modal .box{background:var(--paper);border-radius:14px;width:430px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal .mh{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .modal .mh h3{margin:0;font-size:15.5px;font-weight:600;flex:1}
+  .modal .mh .x{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--paper);display:grid;place-items:center;color:var(--ink-soft);cursor:pointer}
+  .modal .mb{padding:8px 12px;overflow:auto}
+  .tcell{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:8px;cursor:pointer;font-family:var(--mono);font-size:14px}
+  .tcell:hover{background:var(--panel)}
+  .tcell .chk{width:18px;height:18px;border-radius:5px;border:1.5px solid #c2cad3;display:grid;place-items:center;color:#fff;font-size:12px}
+  .tcell.on .chk{background:var(--navy);border-color:var(--navy)}
+  .modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal .mf .sel{font-size:13px;color:var(--ink-soft)}
+  .modal .mf .done{border:none;background:var(--navy);color:#fff;border-radius:8px;height:38px;padding:0 18px;font-weight:600;font-size:14px;cursor:pointer}
+  /* settings */
+  #setmodal .box{width:580px;max-width:100%;max-height:86vh}
+  .setlbl{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin:13px 0 5px}
+  .setlbl span{font-weight:400;color:var(--ink-faint);font-size:11px}
+  #setmodal textarea,#setmodal input{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-family:var(--mono);font-size:12.5px;padding:8px 10px;resize:vertical;line-height:1.5}
+  #setmodal textarea:focus,#setmodal input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
+  .setrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .setrow3{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:8px}
+  #setmodal .mf .ghost{margin-right:auto;height:38px;padding:0 14px}
+  /* trust layer */
+  .strip .co .prov{margin-top:7px;font-size:10.5px;color:var(--ink-faint);display:flex;align-items:center;gap:5px}
+  .strip .co .prov .dot{width:7px;height:7px}
+  .strip .act .vbtn{height:30px;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);border-radius:8px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+  .strip .act .vbtn:hover{border-color:var(--navy);color:var(--navy)}
+  .strip .act .ver{font-size:11px;text-align:center;color:var(--pending);font-family:var(--sans)}
+  .strip .act .ver.ok{color:var(--cleared);font-weight:600}
+  #verifymodal .box{width:480px;max-width:100%}
+  .vfprov{font-size:12.5px;color:var(--ink-soft);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px;display:flex;align-items:center;gap:7px;margin-bottom:13px;flex-wrap:wrap}
+  .vftable{width:100%;border-collapse:collapse;font-size:13px}
+  .vftable td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  .vftable td:first-child{color:var(--ink-faint);width:38%;font-size:12px}
+  .vfsign{margin-top:14px;padding-top:13px;border-top:1px dashed var(--line)}
+  .vfsign label{font-size:12px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:6px}
+  .vfsign input{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0 11px;font-size:14px}
+  .vfsign input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
+  .vfdone{font-size:12.5px;color:var(--cleared);margin-top:9px;font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<section id="login">
+  <div class="panel">
+    <a class="mark" href="#"><span class="glyph"><svg viewBox="0 0 24 24"><path fill="#fff" d="M2.5 13.2 21 4.5c.9-.4 1.7.5 1.2 1.4l-9 16.4c-.4.8-1.6.6-1.8-.3l-1.3-6-6-1.4c-.9-.2-1-1.5-.3-1.8Z"/></svg></span><span class="wm"><b>Diplo</b><span>Clear</span></span></a>
+    <div>
+      <h1>Clearance at the<br>speed of the <em>mission</em>.</h1>
+      <p class="sub">Enter a flight once. Get every country's diplomatic clearance form — correct, formatted, ready to send.</p>
+      <div class="field"><label>Operator</label><input value="RSAF · Plans Hub, AOCG" readonly></div>
+      <div class="field"><label>Passcode</label><input type="password" value="••••••" aria-label="Passcode"></div>
+      <button class="enter" onclick="enterConsole()">Open console
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="foot"><span class="badge">OFFLINE</span><span class="badge">SANITISED DATA</span><br>Runs in the browser. Nothing leaves this machine.</div>
+  </div>
+  <div class="hero">
+    <div class="img" id="heroimg"></div>
+    <div class="scrim"></div>
+    <div class="tagline">Air operations · diplomatic clearance · Republic of Singapore Air Force</div>
+  </div>
+</section>
+
+<!-- ===================== CONSOLE ===================== -->
+<main id="console">
+  <header class="topbar">
+    <a class="mark" href="#"><span class="glyph"><svg viewBox="0 0 24 24"><path fill="#fff" d="M2.5 13.2 21 4.5c.9-.4 1.7.5 1.2 1.4l-9 16.4c-.4.8-1.6.6-1.8-.3l-1.3-6-6-1.4c-.9-.2-1-1.5-.3-1.8Z"/></svg></span><span class="wm"><b>Diplo</b><span>Clear</span></span></a>
+    <div class="sp"></div>
+    <div class="stat"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><div class="v">11h 20m</div><div class="l">saved this week</div></div></div>
+    <div class="who"><span class="av">RN</span><span>MR Ronnie · Plans Hub</span></div>
+    <button class="iconbtn" id="themebtn" title="Light / dark mode" aria-label="Toggle theme" onclick="toggleTheme()"><svg id="themeicon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg></button>
+    <button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6 2 2 0 1 1 13 4.6a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 11a2 2 0 1 1 0 4Z"/></svg></button>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+
+      <!-- mission -->
+      <div class="card">
+        <div class="entrybar">
+          <div class="seg"><button class="on" id="seg-scratch" onclick="setEntry('scratch')">Build from scratch</button><button id="seg-import" onclick="setEntry('import')">Import a filled request</button></div>
+          <span class="entryhint" id="entryhint">Ronnie knows this one — fill it in directly.</span>
+        </div>
+        <div id="scratchview">
+        <div class="presetbar">
+          <span class="lbl">Load a saved mission</span>
+          <select id="presetsel" onchange="loadMission(this.value)"><option value="">No saved flights yet</option></select>
+          <span class="sp" style="flex:1"></span>
+          <button class="ghost" onclick="newMission()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14"/></svg>New</button>
+          <button class="ghost" onclick="saveMission()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save</button>
+        </div>
+        <div class="hd"><span class="step">STEP 1</span><h2>Enter the flight — once</h2></div>
+        <div class="bd">
+          <div class="fgrid">
+            <div class="f"><label>Aircraft type</label><select id="actype" onchange="syncTails()"></select></div>
+            <div class="f"><label>Number</label><input id="acnum" type="number" value="1" min="1" max="12" onchange="capTails()"></div>
+            <div class="f wide"><label>Tail numbers</label><button type="button" class="tailbtn" onclick="openTails()"><span class="mono" id="tailtxt">—</span><span class="cnt" id="tailcnt"></span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B95A1" stroke-width="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></button></div>
+            <div class="f"><label>Callsign</label><div style="display:flex;gap:8px"><input id="f_cs" value="SINGA" style="flex:1"><input id="f_csno" value="12" style="width:64px" title="Callsign number" aria-label="Callsign number"></div></div>
+            <div class="f"><label>Captain</label><input id="f_capt" value="MAJ MICHELLE TEO"></div>
+            <div class="f"><label>Crew</label><input id="f_crew" value="7"></div>
+            <div class="f"><label>Pax</label><input id="f_pax" value="NIL"></div>
+            <div class="f"><label>From</label><select id="f_from"><option>Changi (WSSS)</option><option>Paya Lebar (WSAP)</option><option>Tengah (WSAT)</option></select></div>
+            <div class="f"><label>To</label><select id="f_to"><option>Udon Thani (VTUD)</option><option>King Khalid (OERK)</option><option>Darwin (YPDN)</option></select></div>
+            <div class="f"><label>Date</label><input id="f_date" value="08 APR 26"></div>
+            <div class="f"><label>Purpose</label><select id="f_purpose"><option>Exercise deployment</option><option>Air recovery</option><option>HADR response</option><option>Training</option><option>VIP</option></select></div>
+            <div class="f wide"><label>Route (ATS)</label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
+          </div>
+          <div class="toggle"><span class="switch" id="dgsw" onclick="toggleDG()"></span><span>Carrying dangerous goods <span style="color:var(--ink-faint)">— adds UN number, class, weight</span></span></div>
+          <div id="dgfields">
+            <div class="f"><label>UN number</label><input id="f_un" placeholder="UN 0000"></div>
+            <div class="f"><label>Class / div.</label><input id="f_class" placeholder="1.4S"></div>
+            <div class="f"><label>Gross weight</label><input id="f_wt" placeholder="0 kg"></div>
+          </div>
+          <div class="poc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span id="pocline">Point of contact: PlansHub AOCG (default)</span></div>
+        </div>
+        </div><!-- /scratchview -->
+        <div id="importview">
+          <div class="drop">
+            <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5M5 21h14"/></svg></div>
+            <h3>Import the unit's filled request</h3>
+            <p>Drop the squadron's completed request here — or pick the file. We read it and fill the flight automatically, then you review.</p>
+            <button class="pick" onclick="doImport()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/></svg>Choose request file&nbsp;&nbsp;(.xlsx / .pdf)</button>
+            <div class="tmpl">No request yet? <a onclick="toast('Blank request form downloaded — send it to the unit')">Download a blank request form</a> to send the unit.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- countries -->
+      <div class="card">
+        <div class="hd"><span class="step">STEP 2</span><h2>Pick the countries</h2>
+          <span class="legend"><i><span class="dot d-cl"></span>verified</i><i><span class="dot d-pe"></span>review due</i><i><span class="dot d-bl"></span>stale</i></span>
+        </div>
+        <div class="bd">
+          <div id="clist"></div>
+          <div class="genbar">
+            <button class="gen" onclick="generate()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h4"/></svg><span id="genlbl">Generate 4 forms</span></button>
+            <span class="hint"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>change the route → forms regenerate</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- strips -->
+    <div class="strips-hd"><h2>Generated forms</h2><span class="count" id="scount"></span></div>
+    <div id="strips"><div class="empty">No forms yet. Pick the countries and select <b>Generate</b> — each one appears here, stamped and ready to download.</div></div>
+  </div>
+</main>
+
+<div class="modal" id="tailmodal">
+  <div class="box">
+    <div class="mh"><h3>Select tail numbers</h3><span class="mono" id="modaltype" style="font-size:12px;color:var(--ink-faint)"></span><button class="x" onclick="closeTails()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="mb" id="tailcells"></div>
+    <div class="mf"><span class="sel" id="modalsel">0 selected</span><button class="done" onclick="closeTails()">Done</button></div>
+  </div>
+</div>
+
+<div class="modal" id="setmodal">
+  <div class="box">
+    <div class="mh"><h3>Settings</h3><span class="mono" style="font-size:11.5px;color:var(--ink-faint)">reference data · saved on this machine</span><button class="x" onclick="closeSettings()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="mb" style="padding:14px 18px">
+      <label class="setlbl">Aircraft fleet <span>one per line · TYPE | tail, tail, … · top 4 rows = frequent</span></label>
+      <textarea id="set_fleet" rows="6"></textarea>
+      <div class="setrow">
+        <div><label class="setlbl">Airfields <span>Name (ICAO)</span></label><textarea id="set_air" rows="5"></textarea></div>
+        <div><label class="setlbl">Purposes</label><textarea id="set_pur" rows="5"></textarea></div>
+      </div>
+      <label class="setlbl">Point of contact</label>
+      <div class="setrow3"><input id="set_pocname" placeholder="Name"><input id="set_poctel" placeholder="Tel"><input id="set_pocemail" placeholder="Email"></div>
+    </div>
+    <div class="mf"><button class="ghost" onclick="resetSettings()">Reset to defaults</button><button class="done" onclick="saveSettings()">Save settings</button></div>
+  </div>
+</div>
+
+<div class="modal" id="verifymodal">
+  <div class="box">
+    <div class="mh"><h3 id="vfTitle">Verify before send</h3><button class="x" onclick="closeVerify()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="mb" style="padding:16px 18px">
+      <div class="vfprov" id="vfProv"></div>
+      <div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px">Filled from this entry — confirm each value</div>
+      <table class="vftable"><tbody id="vfData"></tbody></table>
+      <div class="vfsign">
+        <label>Reviewed &amp; correct — sign-off</label>
+        <input id="vfBy" placeholder="Your name">
+        <div class="vfdone" id="vfDone"></div>
+      </div>
+    </div>
+    <div class="mf" id="vfState"><span class="sel">Confirm the values match the host's current form.</span><button class="done" onclick="signoff()">Sign off as reviewed</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></span><span id="toastmsg"></span></div>
+
+<!-- offline document engine (bundled — no network) -->
+<script src="lib/pizzip.js"></script>
+<script src="lib/docxtemplater.js"></script>
+<script src="lib/pdf-lib.js"></script>
+<script src="lib/templates_data.js"></script>
+<script>
+  const COUNTRIES = [
+    {nm:"Indonesia",    iso:"IDN", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v3"},
+    {nm:"Thailand",     iso:"THA", fmt:"DOCX", lead:"14 days",ok:true,  on:true,  v:"v2"},
+    {nm:"Vietnam",      iso:"VNM", fmt:"DOCX", lead:"5 days", ok:true,  on:true,  v:"v4"},
+    {nm:"Malaysia",     iso:"MYS", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v1"},
+    {nm:"Cambodia",     iso:"KHM", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v1"},
+    {nm:"Myanmar",      iso:"MMR", fmt:"DOCX", lead:"10 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Saudi Arabia", iso:"SAU", fmt:"DOCX", lead:"14 days",ok:true,  on:true,  v:"v2"},
+    {nm:"Taiwan",       iso:"TWN", fmt:"DOCX", lead:"10 days",ok:false, on:true,  v:"v1"},
+    {nm:"Greece",       iso:"GRC", fmt:"DOCX", lead:"10 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Spain",        iso:"ESP", fmt:"DOCX", lead:"10 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Italy",        iso:"ITA", fmt:"DOCX", lead:"12 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Germany",      iso:"DEU", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v1"},
+    {nm:"Egypt",        iso:"EGY", fmt:"DOCX", lead:"14 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Oman",         iso:"OMN", fmt:"DOCX", lead:"12 days",ok:false, on:true,  v:"v1"},
+    {nm:"India",        iso:"IND", fmt:"DOCX", lead:"18 days",ok:true,  on:true,  v:"v1"},
+    {nm:"France",       iso:"FRA", fmt:"XLSX", lead:"10 days",ok:true,  on:true,  v:"v2"},
+    {nm:"New Zealand",  iso:"NZL", fmt:"PDF",  lead:"6 weeks",ok:true,  on:true,  v:"v1"},
+    {nm:"Jordan",       iso:"JOR", fmt:"PDF",  lead:"14 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Bahrain",      iso:"BHR", fmt:"PDF",  lead:"10 days",ok:true,  on:true,  v:"v1"},
+    {nm:"Australia",    iso:"AUS", fmt:"PDF",  lead:"6 weeks",ok:false, on:true,  v:"v1"},
+    {nm:"Canada",       iso:"CAN", fmt:"PDF",  lead:"30 days",ok:false, on:true,  v:"v1"},
+  ];
+  const MISSION = {cs:"SINGA 12", ac:"A330 MRTT", tail:"764", date:"08 APR 26", to:"VTUD"};
+
+  // RSAF fleet + reference lists — editable in Settings (persisted). Frequent travellers on top.
+  let AIRFIELDS=["Changi (WSSS)","Paya Lebar (WSAP)","Tengah (WSAT)","Udon Thani (VTUD)","King Khalid (OERK)","Darwin (YPDN)"];
+  let PURPOSES=["Exercise deployment","Air recovery","HADR response","Training","VIP","Ferry / positioning"];
+  let POC={name:"PlansHub AOCG", tel:"", email:""};
+  let FLEET={frequent:[
+    {type:"A330 MRTT",tails:["760","761","762","763","764"]},
+    {type:"C-130",tails:["720","721","722","723","724","725"]},
+    {type:"F-16C/D",tails:["601","602","603","604","605","606","607","608"]},
+    {type:"F-15SG",tails:["801","802","803","804","805","806"]}],
+   rest:[
+    {type:"G550 AEW",tails:["010","011","012","013"]},
+    {type:"M-346",tails:["150","151","152"]},
+    {type:"PC-21",tails:["120","121"]},
+    {type:"AH-64D Apache",tails:["070","071"]},
+    {type:"CH-47F Chinook",tails:["880","881"]},
+    {type:"H225M",tails:["260","261"]},
+    {type:"S-70B Seahawk",tails:["310","311"]},
+    {type:"Fokker 50",tails:["701","702"]}]};
+  let selTails=["764"];
+  function initFleet(){
+    const s=document.getElementById("actype");
+    const grp=(lbl,arr)=>`<optgroup label="${lbl}">${arr.map(a=>`<option>${a.type}</option>`).join("")}</optgroup>`;
+    const want=s.value||"A330 MRTT";                 // keep the current type across a fleet edit
+    s.innerHTML=grp("Frequent travellers",FLEET.frequent)+grp("Other assets",FLEET.rest);
+    s.value=want;
+    if(!s.value) s.value=(FLEET.frequent[0]||FLEET.rest[0]||{}).type||"";
+    syncTails();                                     // drop tails that aren't on this airframe
+  }
+  function curTails(){ const t=document.getElementById("actype").value; const a=[...FLEET.frequent,...FLEET.rest].find(x=>x.type===t); return a?a.tails:[]; }
+  function syncTails(){ selTails=selTails.filter(t=>curTails().includes(t)); if(!selTails.length&&curTails().length) selTails=[curTails()[0]]; paintTails(); }
+  function capTails(){ const n=+document.getElementById("acnum").value; if(selTails.length>n) selTails=selTails.slice(0,n); paintTails(); }
+  function paintTails(){
+    document.getElementById("tailtxt").textContent = selTails.length?selTails.join(", "):"—";
+    document.getElementById("tailcnt").textContent = selTails.length?`${selTails.length} sel`:"";
+    MISSION.tail = selTails.join(", "); MISSION.ac = document.getElementById("actype").value;
+  }
+  function openTails(){
+    document.getElementById("modaltype").textContent = document.getElementById("actype").value;
+    document.getElementById("tailcells").innerHTML = curTails().map(t=>`<div class="tcell ${selTails.includes(t)?'on':''}" onclick="toggleTail('${t}')"><span class="chk">${selTails.includes(t)?'✓':''}</span>${t}</div>`).join("");
+    document.getElementById("modalsel").textContent = `${selTails.length} selected`;
+    document.getElementById("tailmodal").classList.add("show");
+  }
+  function toggleTail(t){ const n=+document.getElementById("acnum").value;
+    if(selTails.includes(t)) selTails=selTails.filter(x=>x!==t);
+    else { if(selTails.length>=n){ toast(`That's ${n} aircraft — raise the number first`); return; } selTails.push(t); }
+    openTails();
+  }
+  function closeTails(){ document.getElementById("tailmodal").classList.remove("show"); paintTails(); }
+  function setEntry(mode){
+    document.getElementById("seg-scratch").classList.toggle("on",mode==='scratch');
+    document.getElementById("seg-import").classList.toggle("on",mode==='import');
+    document.getElementById("importview").classList.toggle("show",mode==='import');
+    document.getElementById("scratchview").style.display = mode==='import'?'none':'block';
+    document.getElementById("entryhint").textContent = mode==='import' ? "Unit filled the request — import it, then review." : "Ronnie knows this one — fill it in directly.";
+  }
+  function doImport(){ setEntry('scratch'); toast("Request imported — flight filled, please review"); }
+
+  function enterConsole(){ document.getElementById("login").style.display="none"; document.getElementById("console").style.display="block"; }
+  function toggleDG(){ document.getElementById("dgsw").classList.toggle("on"); document.getElementById("dgfields").classList.toggle("show"); }
+
+  // ---- trust layer: template freshness, named owner, verification + sign-off ----
+  const OWNER_DEFAULT="PlansHub AOCG — DCR Desk";
+  // iso -> [last-verified date, owner]. Degrading flag: <6mo fresh, <18mo review-due, else stale.
+  const FRESH={IDN:["2026-05-12"],THA:["2026-04-02"],VNM:["2026-03-20"],MYS:["2026-05-01"],KHM:["2025-11-10"],
+    MMR:["2026-04-18"],SAU:["2026-02-15"],TWN:["2025-08-05"],GRC:["2026-05-20","PlansHub — EU/DIC Desk"],
+    ESP:["2026-05-20","PlansHub — EU/DIC Desk"],ITA:["2026-01-12","PlansHub — EU/DIC Desk"],DEU:["2026-03-01"],
+    EGY:["2025-09-22"],OMN:["2025-07-14"],IND:["2026-04-09"],FRA:["2026-05-18","PlansHub — EU/DIC Desk"],
+    NZL:["2026-02-28"],JOR:["2024-11-30"],BHR:["2025-12-05"],AUS:["2024-08-15"],CAN:["2024-06-20"]};
+  let REVIEWED={};
+  const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtDate(iso){ const d=new Date(iso); return d.getDate()+' '+MON3[d.getMonth()]+' '+String(d.getFullYear()).slice(2); }
+  function freshness(iso){
+    const e=FRESH[iso]||["2026-01-01"]; const date=e[0], owner=e[1]||OWNER_DEFAULT;
+    const mo=Math.max(0,Math.round((Date.now()-new Date(date).getTime())/2.628e9));
+    const state=mo<6?'fresh':mo<18?'aging':'stale';
+    return {date,owner,mo,state,dot:{fresh:'d-cl',aging:'d-pe',stale:'d-bl'}[state],
+      label:{fresh:'verified',aging:'review due',stale:'re-verify'}[state],
+      col:{fresh:'var(--cleared)',aging:'var(--pending)',stale:'var(--blocked)'}[state]};
+  }
+  // Mission values are free text and land in innerHTML — escape so a stray < or & can't
+  // silently drop a value from the very table the operator signs off on.
+  function hesc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function openVerify(iso, nm){
+    const d=buildData(), f=freshness(iso), rv=REVIEWED[iso];
+    const rows=[['Aircraft',d.aircraft],['Tail numbers',d.tails],['Callsign',d.callsign],['Captain',d.captain],
+      ['Crew',d.crew_n],['From → To',d.sector],['Date',d.date],['Purpose',d.purpose],['Route (ATS)',d.route],['Cargo',d.cargo]];
+    document.getElementById('vfTitle').textContent=nm+' — verify before send';
+    document.getElementById('vfProv').innerHTML=`<span class="dot ${f.dot}"></span> Template ${hesc(f.label)} ${hesc(fmtDate(f.date))} · owner: ${hesc(f.owner)}`+
+      (f.state==='stale'?' <b style="color:var(--blocked)">— re-verify against the host\'s current form first</b>':'');
+    document.getElementById('vfData').innerHTML=rows.map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('');
+    document.getElementById('vfBy').value=rv?rv.by:'MR Ronnie';
+    document.getElementById('vfState').dataset.iso=iso;
+    document.getElementById('vfDone').textContent=rv?`✓ Signed off by ${rv.by} · ${rv.at}`:'';
+    document.getElementById('verifymodal').classList.add('show');
+  }
+  function closeVerify(){ document.getElementById('verifymodal').classList.remove('show'); }
+  function signoff(){
+    const iso=document.getElementById('vfState').dataset.iso, by=(document.getElementById('vfBy').value.trim()||'—');
+    REVIEWED[iso]={by, at:fmtDate(new Date().toISOString())};
+    const el=document.getElementById('rev-'+iso); if(el){ el.textContent='✓ reviewed · '+by; el.classList.add('ok'); }
+    toast('Signed off — reviewed by '+by); closeVerify();
+  }
+
+  function renderList(){
+    document.getElementById("clist").innerHTML = COUNTRIES.map((c,i)=>{
+      const f=freshness(c.iso);
+      return `<div class="crow ${c.on?'on':''}" onclick="toggleCountry(${i})">
+        <span class="chk">${c.on?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>':''}</span>
+        <span class="nm">${c.nm} <span class="iso">${c.iso}</span></span>
+        <span class="fmt">${c.fmt}</span>
+        <span class="dot ${f.dot}" title="Template ${f.label} ${fmtDate(f.date)} · ${f.owner}"></span>
+        <span class="lead">${c.lead}</span>
+      </div>`; }).join("");
+    const n = COUNTRIES.filter(c=>c.on).length;
+    document.getElementById("genlbl").textContent = `Generate ${n} form${n!==1?'s':''}`;
+  }
+  function toggleCountry(i){ COUNTRIES[i].on=!COUNTRIES[i].on; renderList(); }
+
+  function generate(){
+    const sel = COUNTRIES.filter(c=>c.on);
+    if(!sel.length){ toast("Pick at least one country first"); return; }
+    const d = buildData(); REVIEWED = {};
+    document.getElementById("strips").innerHTML = sel.map((c,i)=>{
+      const f = freshness(c.iso); const dcn = `DCR0${42+i}-26`;
+      return `<div class="strip" style="animation-delay:${i*70}ms">
+        <span class="bar" style="background:${f.col}"></span>
+        <div class="co"><div class="c">${c.nm}</div><div class="iso">${c.iso} · ${c.fmt}</div>
+          <div class="prov"><span class="dot ${f.dot}"></span>${f.label} ${fmtDate(f.date)}</div></div>
+        <div class="data">
+          <div class="kv"><div class="k">Callsign</div><div class="v">${hesc(d.callsign)}</div></div>
+          <div class="kv"><div class="k">Aircraft</div><div class="v">${hesc(d.aircraft)}</div></div>
+          <div class="kv"><div class="k">Tail</div><div class="v">${hesc(d.tails)}</div></div>
+          <div class="kv"><div class="k">Date</div><div class="v">${hesc(d.date)}</div></div>
+        </div>
+        <div class="stampwrap"><div class="stamp"><div><div class="t">DIP<br>CLR</div><div class="n">${dcn}</div></div></div></div>
+        <div class="act">
+          <button class="dl" onclick="dl('${c.iso}','${c.nm}','${c.fmt}','${c.v}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg>Download</button>
+          <button class="vbtn" onclick="openVerify('${c.iso}','${c.nm.replace(/'/g,'')}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>Verify &amp; sign</button>
+          <div class="ver" id="rev-${c.iso}">⚠ not reviewed</div>
+        </div>
+      </div>`;
+    }).join("");
+    document.getElementById("scount").textContent = `${sel.length} ready · ~${Math.round(sel.length*40)} min saved`;
+    toast(`${sel.length} forms generated — verify before sending`);
+  }
+
+  // ---- real document generation (Indonesia DCR — offline via docxtemplater) ----
+  const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  function fld(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+  function buildData(){
+    const placeName = s => s.replace(/\s*\(.*\)\s*$/,'').toUpperCase().trim();
+    const from = placeName(fld('f_from')), to = placeName(fld('f_to'));
+    const prim = selTails[0]||'', alt = selTails.slice(1);
+    const dg = document.getElementById('dgsw').classList.contains('on');
+    const cargo = dg ? ([fld('f_un'),fld('f_class'),fld('f_wt')].filter(Boolean).join(' · ') || 'DANGEROUS GOODS') : 'PERSONAL BAGGAGE & FAK';
+    const now = new Date();
+    const dtd = `${String(now.getDate()).padStart(2,'0')} ${MON[now.getMonth()]} ${String(now.getFullYear()).slice(2)}`;
+    const capt = fld('f_capt'), crewN = fld('f_crew')||'1', purpose = fld('f_purpose');
+    return {
+      dcr_no:"042-26 (1)", dtd, date: fld('f_date'),
+      aircraft:`${fld('acnum')} x ${document.getElementById('actype').value}`, type: document.getElementById('actype').value,
+      tails: alt.length ? `${prim} (ALT: ${alt.join(', ')})` : prim,
+      callsign: `${fld('f_cs')} ${fld('f_csno')}`.trim(), reg: prim,
+      sector: `${from} - ${to}`, route: fld('f_route'), dest: to,
+      time_note:"(ALL TIMES UTC)", etd: fld('f_date'), eta: fld('f_date'),
+      purpose, in_support: purpose,
+      captain: capt, crew_n: crewN,
+      crew: `${capt} + ${Math.max(0,(parseInt(crewN)||1)-1)} CREW`,
+      pax: fld('f_pax')||'NIL',
+      cargo, mil_equip:"NIL", photo:"NIL", services:"NIL", validity:"72 HOURS",
+      level:"FL 250 - 390", dep: from, other:"NIL",
+      remarks:"REQUEST FLIGHT CLEARANCE TO BE VALID FOR 72 HOURS. REQUEST OVER-FLIGHT CLEARANCE."
+    };
+  }
+  function downloadBlob(blob, name){
+    const a=document.createElement('a'), url=URL.createObjectURL(blob);
+    a.href=url; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 600);
+  }
+  const TPL = { IDN:'indonesia', THA:'thailand', VNM:'vietnam', MYS:'malaysia', KHM:'cambodia', MMR:'myanmar', SAU:'saudi', TWN:'taiwan', GRC:'greece', ESP:'spain', ITA:'italy', DEU:'germany', EGY:'egypt', OMN:'oman', IND:'india' };
+  function generateDoc(key, nm, v){
+    const PizZip=window.PizZip, DT=window.docxtemplater||window.Docxtemplater;
+    if(!PizZip||!DT||!window.TEMPLATES){ toast("Doc engine not loaded"); return; }
+    const doc=new DT(new PizZip(window.TEMPLATES[key],{base64:true}),{paragraphLoop:true,linebreaks:true});
+    doc.render(buildData());
+    const blob=doc.getZip().generate({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    downloadBlob(blob, `${nm}_${cs}_${dt}_${v}.docx`);
+    toast(`${nm} clearance generated — check downloads`);
+  }
+  // Excel engine: same bundle-and-replace as docx, but on the xlsx worksheet XML.
+  const XTPL = { FRA:'france' };
+  function generateXlsx(key, nm, v){
+    const PizZip=window.PizZip;
+    if(!PizZip||!window.TEMPLATES){ toast("Doc engine not loaded"); return; }
+    const zip=new PizZip(window.TEMPLATES[key],{base64:true});
+    const data=buildData();
+    const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    (zip.file(/xl\/(worksheets\/.*|sharedStrings)\.xml/)||[]).forEach(f=>{
+      let s=f.asText();
+      for(const k in data) s=s.split('{'+k+'}').join(esc(data[k]));
+      zip.file(f.name, s);
+    });
+    const blob=zip.generate({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    downloadBlob(blob, `${nm}_${cs}_${dt}_${v}.xlsx`);
+    toast(`${nm} clearance generated — check downloads`);
+  }
+  // PDF engine: flat forms have no fillable fields, so white-out the baked-in sample
+  // value and overlay ours at mapped coords (pdftotext top-left → pdf-lib bottom-left).
+  const PTPL = { NZL:'nz', JOR:'jordan', BHR:'bahrain', AUS:'australia' };
+  const PDFMAP = { nz:{
+    // The NZ master is a REAL FILED SAMPLE, so its own mission data is baked into the page:
+    // POC (a named officer + phone), callsign, alt regs, the full NZ itinerary with dates,
+    // the overflight routes and the operator answers. Audit 2026-08-13 caught it shipping on
+    // every generated form. White out each data row; we only re-draw what the mission supplies,
+    // so the rest goes out blank for the planner rather than carrying someone else's sortie.
+    // NOTE: white-out hides but does not delete — the covered words are still in the PDF's text
+    // layer. Sourcing a genuinely blank MFAT form is the proper fix; see tools/xfa_flatten/README.
+    blanks:[
+      {x:73.0, w:394.9, top:169.5, bot:181.0},  // POC: named officer + email + phone
+      {x:73.0, w:75.0,  top:191.9, bot:206.6},  // purpose of visit (sample exercise)
+      {x:116.7,w:382.0, top:241.8, bot:253.5},  // aircraft row: sample type / regs / callsign
+      {x:111.9,w:398.8, top:296.0, bot:309.4},  // alternate aircraft row
+      {x:324.9,w:75.9,  top:293.5, bot:304.5},  // alternate registration list
+      {x:498.0,w:12.0,  top:649.8, bot:660.4},  // operator certificate answer (2nd column)
+      {x:73.0, w:428.2, top:377.4, bot:386.7},  // "To New Zealand" row
+      {x:73.7, w:425.4, top:451.6, bot:460.9},  // itinerary 1
+      {x:73.7, w:425.4, top:456.6, bot:465.9},  // itinerary 2
+      {x:73.0, w:427.5, top:468.2, bot:477.5},  // itinerary 3
+      {x:73.0, w:415.0, top:473.2, bot:482.5},  // itinerary 4
+      {x:73.0, w:428.9, top:541.7, bot:553.7},  // "From New Zealand" row
+      {x:129.2,w:154.1, top:589.9, bot:599.2},  // overflight route 1
+      {x:129.2,w:255.8, top:594.9, bot:604.2},  // overflight route 2
+      {x:129.2,w:156.3, top:603.9, bot:613.2},  // overflight route 3
+      {x:129.2,w:178.3, top:608.9, bot:618.2},  // overflight route 4
+      {x:437.1,w:20.0,  top:649.5, bot:663.0},  // operator certificate answer "No"
+      {x:437.1,w:20.0,  top:665.7, bot:679.2},  // operator certificate answer "yes"
+      {x:73.0, w:316.6, top:723.0, bot:733.6},  // operator name / address / nationality
+      {x:73.0, w:351.6, top:779.1, bot:791.2},  // captain title + sample captain's name
+    ],
+    fields:[
+    {x:73, w:250, top:191, bot:207, key:'purpose',  size:10},
+    {x:116,w:205, top:239, bot:253, key:'aircraft', size:9.5},
+    {x:328,w:178, top:240, bot:254, key:'reg',      size:8.5},
+    {x:454,w:112, top:240, bot:253, key:'callsign', size:9.5},
+    {x:120,w:185, top:778, bot:792, key:'captain',  size:9},
+  ]},
+  jordan:{ fields:[
+    {x:348, ty:692, text:"OVERFLY", size:9},
+    {x:348, ty:680, text:"RSAF", size:9},
+    {x:348, ty:668, text:"SINGAPORE", size:9},
+    {x:348, ty:656, key:"tails", size:8},
+    {x:348, ty:644, key:"aircraft", size:8.5},
+    {x:348, ty:632, key:"callsign", size:9},
+    {x:348, ty:620, key:"captain", size:8.5},
+    {x:348, ty:608, key:"crew_n", size:9},
+    {x:212, ty:569, key:"dep", size:8.5},
+    {x:212, ty:380, key:"dest", size:8.5},
+    {x:348, ty:368, key:"purpose", size:8.5},
+    {x:348, ty:332, key:"pax", size:9},
+    {x:348, ty:308, key:"cargo", size:8.5},
+  ]},
+  bahrain:{ fields:[
+    {x:130, ty:688, text:"RSAF — REPUBLIC OF SINGAPORE AIR FORCE", size:7},
+    {x:118, ty:558, key:"callsign", size:8.5},
+    {x:289, ty:543, key:"dep", size:8.5},
+    {x:374, ty:543, key:"dest", size:8.5},
+  ]},
+  // Australia AF179 — flattened from Adobe XFA by tools/xfa_flatten. Coords are measured from a
+  // markers pass; the bundled template is the same render with the markers cleared, and the build
+  // gates that clearing them causes no reflow — so a submitted form carries no [[marker]] text.
+  // maxw = clear space to the next word on that line; values shrink to fit rather than overrun.
+  // The master is a real filed sortie, so build time SCRUBS it (see patch_tpl.py): the vendor's
+  // officer PII, dangerous-goods manifest, ATS routes, aerodromes and Zulu times are cleared,
+  // which is why nothing is overlaid past page 2 — those sections ship blank for the planner.
+  australia:{ fields:[
+    {page:1, x:52.0,  ty:328.7, key:"purpose",  size:7.7, maxw:501.9},
+    {page:2, x:52.0,  ty:449.7, key:"reg",      size:7.7, maxw:169.9},
+    {page:2, x:224.0, ty:449.7, key:"type",     size:7.7, maxw:169.9},
+    {page:2, x:395.9, ty:449.7, key:"callsign", size:7.7, maxw:158.0},
+    {page:2, x:206.3, ty:634.7, key:"captain",  size:7.7, maxw:364.1},
+    {page:2, x:52.0,  ty:553.7, key:"crew_n",   size:7.7, maxw:58.1},
+    {page:2, x:120.4, ty:512.7, key:"pax",      size:7.7, maxw:80.1},
+    {page:2, x:51.9,  ty:309.7, key:"dep",      size:7.7, maxw:502.1},
+    {page:2, x:307.2, ty:181.7, key:"dep",      size:7.7, maxw:246.7},
+    {page:2, x:51.9,  ty:260.7, key:"dest",     size:7.7, maxw:502.1},
+    {page:2, x:51.9,  ty:226.7, key:"dest",     size:7.7, maxw:502.1},
+  ]}};
+  async function generatePdf(key, nm, v){
+    const PDFLib=window.PDFLib;
+    if(!PDFLib||!window.TEMPLATES){ toast("PDF engine not loaded"); return; }
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const bytes = Uint8Array.from(atob(window.TEMPLATES[key]), c=>c.charCodeAt(0));
+    const pdf = await PDFDocument.load(bytes, {ignoreEncryption:true, throwOnInvalidObject:false});
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const pages = pdf.getPages();
+    const pg = i => pages[(i||1)-1] || pages[0];   // 1-based page; defaults to first
+    const data = buildData();
+    for(const b of (PDFMAP[key].blanks||[])){ const p=pg(b.page), H=p.getHeight();
+      p.drawRectangle({x:b.x, y:H-b.bot-1, width:b.w, height:(b.bot-b.top)+2, color:rgb(1,1,1)}); }
+    // shrink a value until it fits the clear space on its line (never overrun into the next field)
+    const fit=(val,size,maxw)=>{ if(!maxw) return size; let s=size;
+      while(s>4.5 && font.widthOfTextAtSize(val,s)>maxw) s-=0.25; return s; };
+    for(const f of PDFMAP[key].fields){
+      const p=pg(f.page), H=p.getHeight();
+      const val = f.text != null ? f.text : String(data[f.key] ?? '');
+      if(f.wo) p.drawRectangle({x:f.wo.x, y:f.wo.y, width:f.wo.w, height:f.wo.h, color:rgb(1,1,1)});
+      if(f.ty != null){          // blank/marker overlay: draw text at (x, ty)
+        p.drawText(val, {x:f.x, y:f.ty, size:fit(val,f.size||9,f.maxw), font, color:rgb(0.05,0.05,0.05)});
+      } else {                   // filled-sample form: white-out the region then overlay
+        p.drawRectangle({x:f.x, y:H-f.bot-1, width:f.w, height:(f.bot-f.top)+2, color:rgb(1,1,1)});
+        p.drawText(val, {x:f.x+1.5, y:H-f.bot+2.5, size:fit(val,f.size,f.w-3), font, color:rgb(0.05,0.05,0.05)});
+      }
+    }
+    const out = await pdf.save();
+    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    downloadBlob(new Blob([out],{type:'application/pdf'}), `${nm}_${cs}_${dt}_${v}.pdf`);
+    toast(`${nm} clearance generated — check downloads`);
+  }
+  // Australia & Canada ship from Adobe LiveCycle as XFA forms that render only in Adobe
+  // ("Please wait…" everywhere else). We pre-flatten them offline to normal PDFs
+  // (tools/xfa_flatten, pdf.js): Australia -> 6-page A4 blank filled via PDFMAP.australia
+  // above; Canada -> flat blank (dynamic form, complete in any viewer).
+  const XBLANK = { CAN:'canada' };   // flat blank -> fill or print in any PDF viewer
+  function b64bytes(b64){ const s=atob(b64), a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+  function downloadFlatBlank(key, nm){
+    downloadBlob(new Blob([b64bytes(window.TEMPLATES[key])],{type:'application/pdf'}), `${nm}_form_to_complete.pdf`);
+    // Flattened, so it opens and prints anywhere — but it carries no form fields:
+    // complete it by hand or in a PDF annotator, not by typing into the page.
+    toast(`${nm}: blank form generated — print and complete by hand`);
+  }
+  function dl(iso, nm, fmt, v){
+    const dkey=TPL[iso], xkey=XTPL[iso], pkey=PTPL[iso], bkey=XBLANK[iso];
+    try{
+      if(dkey && window.TEMPLATES && window.TEMPLATES[dkey]) generateDoc(dkey, nm, v);
+      else if(xkey && window.TEMPLATES && window.TEMPLATES[xkey]) generateXlsx(xkey, nm, v);
+      else if(pkey && window.TEMPLATES && window.TEMPLATES[pkey])
+        generatePdf(pkey, nm, v).catch(e=>{ console.error(e); toast('Generation error — see console'); });
+      else if(bkey && window.TEMPLATES && window.TEMPLATES[bkey]) downloadFlatBlank(bkey, nm);
+      else toast(`${nm} is ${fmt} — ${fmt} engine is next`);
+    }catch(e){ console.error(e); toast('Generation error — see console'); }
+  }
+
+  let tt;
+  function toast(m){ const t=document.getElementById("toast"); document.getElementById("toastmsg").textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),2400); }
+
+  // ---- theme (persisted) ----
+  function applyTheme(t){ if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); else document.documentElement.removeAttribute('data-theme'); }
+  function toggleTheme(){ const dark=document.documentElement.getAttribute('data-theme')!=='dark'; applyTheme(dark?'dark':'light'); try{localStorage.setItem('dc_theme',dark?'dark':'light');}catch(e){} }
+  try{ applyTheme(localStorage.getItem('dc_theme')); }catch(e){}
+  if((location.search+location.hash).indexOf('dark')>=0) applyTheme('dark');
+
+  // ---- saved missions / presets (persisted) ----
+  function collectForm(){
+    return { actype:document.getElementById('actype').value, acnum:fld('acnum'),
+      cs:fld('f_cs'), csno:fld('f_csno'), capt:fld('f_capt'), crew:fld('f_crew'), pax:fld('f_pax'),
+      from:document.getElementById('f_from').value, to:document.getElementById('f_to').value,
+      date:fld('f_date'), purpose:document.getElementById('f_purpose').value, route:fld('f_route'),
+      tails:selTails.slice(), dg:document.getElementById('dgsw').classList.contains('on') };
+  }
+  function applyForm(m){
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null) e.value=v; };
+    set('actype',m.actype); set('acnum',m.acnum); set('f_cs',m.cs); set('f_csno',m.csno);
+    set('f_capt',m.capt); set('f_crew',m.crew); set('f_pax',m.pax); set('f_from',m.from); set('f_to',m.to);
+    set('f_date',m.date); set('f_purpose',m.purpose); set('f_route',m.route);
+    if(Array.isArray(m.tails)){ selTails=m.tails.slice(); paintTails(); }
+    if(!!m.dg !== document.getElementById('dgsw').classList.contains('on')) toggleDG();
+  }
+  function getPresets(){ try{ return JSON.parse(localStorage.getItem('dc_presets')||'{}'); }catch(e){ return {}; } }
+  function renderPresets(){
+    const s=document.getElementById('presetsel'); if(!s) return;
+    const names=Object.keys(getPresets());
+    s.innerHTML='<option value="">'+(names.length?'Saved flights…':'No saved flights yet')+'</option>'+
+      names.map(n=>`<option value="${hesc(n)}">${hesc(n)}</option>`).join('');
+  }
+  function saveMission(){
+    const def=(fld('f_cs')+' '+fld('f_csno')+' · '+document.getElementById('f_to').value.replace(/\s*\(.*\)/,'')).trim();
+    const name=prompt('Save this flight as:', def); if(!name) return;
+    const p=getPresets(); p[name]=collectForm(); try{ localStorage.setItem('dc_presets',JSON.stringify(p)); }catch(e){}
+    renderPresets(); toast('Saved "'+name+'"');
+  }
+  function loadMission(name){ if(!name) return; const m=getPresets()[name]; if(m){ applyForm(m); toast('Loaded "'+name+'"'); } }
+  function newMission(){ ['f_cs','f_csno','f_capt','f_crew','f_pax','f_date','f_route','acnum'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=(id==='acnum'?'1':'');}); selTails=[]; paintTails(); toast('New blank flight'); }
+
+  // ---- reference data render (From/To/Purpose/POC from the editable lists) ----
+  function renderRefData(){
+    const opts=arr=>arr.map(a=>`<option>${a.replace(/</g,'&lt;')}</option>`).join("");
+    const from=document.getElementById('f_from'), to=document.getElementById('f_to'), pur=document.getElementById('f_purpose');
+    if(from){ const c=from.value; from.innerHTML=opts(AIRFIELDS); from.value=AIRFIELDS.includes(c)?c:AIRFIELDS[0]; }
+    if(to){ const c=to.value; to.innerHTML=opts(AIRFIELDS); to.value=AIRFIELDS.includes(c)?c:AIRFIELDS[Math.min(3,AIRFIELDS.length-1)]; }
+    if(pur){ const c=pur.value; pur.innerHTML=opts(PURPOSES); pur.value=PURPOSES.includes(c)?c:PURPOSES[0]; }
+    const pl=document.getElementById('pocline'); if(pl) pl.textContent='Point of contact: '+(POC.name||'—')+(POC.tel?' · '+POC.tel:'');
+  }
+  // ---- settings (persisted reference data) ----
+  function applySettings(s){ if(s.fleet)FLEET=s.fleet; if(s.airfields)AIRFIELDS=s.airfields; if(s.purposes)PURPOSES=s.purposes; if(s.poc)POC=s.poc; }
+  function loadSettings(){ try{ const s=JSON.parse(localStorage.getItem('dc_settings')||'null'); if(s) applySettings(s); }catch(e){} }
+  function fleetToText(){ return [...FLEET.frequent,...FLEET.rest].map(a=>a.type+" | "+a.tails.join(", ")).join("\n"); }
+  function openSettings(){
+    document.getElementById('set_fleet').value=fleetToText();
+    document.getElementById('set_air').value=AIRFIELDS.join("\n");
+    document.getElementById('set_pur').value=PURPOSES.join("\n");
+    document.getElementById('set_pocname').value=POC.name||''; document.getElementById('set_poctel').value=POC.tel||''; document.getElementById('set_pocemail').value=POC.email||'';
+    document.getElementById('setmodal').classList.add('show');
+  }
+  function closeSettings(){ document.getElementById('setmodal').classList.remove('show'); }
+  function parseFleet(txt){
+    const arr=txt.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
+      const i=l.indexOf("|"); const t=(i<0?l:l.slice(0,i)).trim(); const tl=(i<0?"":l.slice(i+1)).split(",").map(s=>s.trim()).filter(Boolean);
+      return {type:t, tails:tl}; }).filter(a=>a.type);
+    const N=Math.min(4,arr.length); return {frequent:arr.slice(0,N), rest:arr.slice(N)};
+  }
+  function saveSettings(){
+    FLEET=parseFleet(document.getElementById('set_fleet').value);
+    AIRFIELDS=document.getElementById('set_air').value.split("\n").map(s=>s.trim()).filter(Boolean);
+    PURPOSES=document.getElementById('set_pur').value.split("\n").map(s=>s.trim()).filter(Boolean);
+    POC={name:document.getElementById('set_pocname').value.trim(), tel:document.getElementById('set_poctel').value.trim(), email:document.getElementById('set_pocemail').value.trim()};
+    try{ localStorage.setItem('dc_settings', JSON.stringify({fleet:FLEET,airfields:AIRFIELDS,purposes:PURPOSES,poc:POC})); }catch(e){}
+    initFleet(); renderRefData(); closeSettings(); toast("Settings saved");
+  }
+  function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
+
+  loadSettings(); renderList(); initFleet(); renderRefData(); renderPresets();
+  if(/^#(console|demo|settings|verify)/.test(location.hash)){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
+</script>
+</body>
+</html>

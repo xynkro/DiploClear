@@ -1,0 +1,38 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="./node_modules/pdfjs-dist/web/pdf_viewer.css">
+<style>
+ html,body{margin:0;padding:0;background:#fff;}
+ #c{background:#fff;}
+ .pagewrap{position:relative;background:#fff;overflow:hidden;break-after:page;}
+ .xfaLayer{position:absolute;top:0;left:0;transform-origin:0 0;}
+</style></head><body>
+<div id="c"></div>
+<script type="module">
+import * as pdfjsLib from './node_modules/pdfjs-dist/build/pdf.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.mjs';
+const XfaLayer = pdfjsLib.XfaLayer;
+const dummyLink = { addLinkAttributes(){}, getDestinationHash(){return '#';}, externalLinkEnabled:false };
+const p = new URLSearchParams(location.search);
+const f = p.get('f')||'australia.pdf';
+const scale = parseFloat(p.get('scale')||'1');
+(async()=>{
+ try{
+  const pdf = await pdfjsLib.getDocument({url:f, enableXfa:true, standardFontDataUrl:'./node_modules/pdfjs-dist/standard_fonts/', cMapUrl:'./node_modules/pdfjs-dist/cmaps/', cMapPacked:true}).promise;
+  console.log('numPages', pdf.numPages, 'isPureXfa', pdf.isPureXfa);
+  const c = document.getElementById('c');
+  const sizes=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const xfaHtml = await page.getXfa();
+    const viewport = page.getViewport({scale}).clone({dontFlip:true});
+    const wrap=document.createElement('div'); wrap.className='pagewrap';
+    wrap.style.width=Math.ceil(viewport.width)+'px'; wrap.style.height=Math.ceil(viewport.height)+'px';
+    const div=document.createElement('div'); div.className='xfaLayer';
+    wrap.appendChild(div); c.appendChild(wrap);
+    XfaLayer.render({xfaHtml, div, viewport, intent:'display', linkService:dummyLink, annotationStorage:null});
+    sizes.push({w:Math.ceil(viewport.width),h:Math.ceil(viewport.height)});
+  }
+  window.__sizes=sizes; window.__done=true;
+ }catch(e){ window.__err=String(e&&e.stack||e); window.__done=true; console.log('ERR',window.__err); }
+})();
+</script></body></html>

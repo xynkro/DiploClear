@@ -1,0 +1,14 @@
+# ── Excluded deliberately: unscrubbed host-nation masters ───────────────
+# The vendor master forms are REAL FILED MISSIONS. The 2026-08-13 audit
+# found they carry a named officer's email + mobile and another sortie's
+# dangerous-goods manifest. Only the scrubbed derivatives are shipped, and
+# those are already bundled (base64) into lib/templates_data.js.
+Master Forms/
+Generated Forms/
+
+# OS / tooling noise
+.DS_Store
+.claude-flow/
+node_modules/
+*.pyc
+__pycache__/

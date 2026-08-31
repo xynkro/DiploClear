@@ -1,0 +1,643 @@
+{
+  "_note": "DUMMY data for the prototype. Confirm fleet, designations and tails in Settings; real tails belong on the accredited system.",
+  "fields": [
+    {
+      "key": "aircraft_type",
+      "label": "Aircraft type",
+      "group": "Aircraft",
+      "control": "select \u00b7 fleet"
+    },
+    {
+      "key": "aircraft_count",
+      "label": "Number of aircraft",
+      "group": "Aircraft",
+      "control": "number"
+    },
+    {
+      "key": "tail_numbers",
+      "label": "Tail numbers",
+      "group": "Aircraft",
+      "control": "modal \u00b7 multi-select"
+    },
+    {
+      "key": "spare_aircraft",
+      "label": "Spare aircraft / tail",
+      "group": "Aircraft",
+      "control": "text / y-n"
+    },
+    {
+      "key": "mtow",
+      "label": "MTOW (kg)",
+      "group": "Aircraft",
+      "control": "number"
+    },
+    {
+      "key": "operator",
+      "label": "Operator",
+      "group": "Aircraft",
+      "control": "FIXED"
+    },
+    {
+      "key": "nationality",
+      "label": "Nationality / state of registry",
+      "group": "Aircraft",
+      "control": "FIXED"
+    },
+    {
+      "key": "callsign",
+      "label": "Callsign",
+      "group": "Identity",
+      "control": "text \u00b7 SINGA __"
+    },
+    {
+      "key": "spare_callsign",
+      "label": "Spare callsign",
+      "group": "Identity",
+      "control": "text"
+    },
+    {
+      "key": "flight_date",
+      "label": "Date of flight",
+      "group": "Identity",
+      "control": "date"
+    },
+    {
+      "key": "purpose",
+      "label": "Purpose of flight",
+      "group": "Identity",
+      "control": "select + other"
+    },
+    {
+      "key": "crew_count",
+      "label": "Number of crew",
+      "group": "Crew",
+      "control": "number"
+    },
+    {
+      "key": "captain",
+      "label": "Captain \u2014 rank & name",
+      "group": "Crew",
+      "control": "autocomplete"
+    },
+    {
+      "key": "crew_list",
+      "label": "Crew list",
+      "group": "Crew",
+      "control": "autocomplete"
+    },
+    {
+      "key": "pax_count",
+      "label": "Passengers",
+      "group": "Crew",
+      "control": "number"
+    },
+    {
+      "key": "vip",
+      "label": "VIP \u2014 title / rank & name",
+      "group": "Crew",
+      "control": "text"
+    },
+    {
+      "key": "dep_airfield",
+      "label": "Departure airfield",
+      "group": "Route",
+      "control": "select \u00b7 ICAO"
+    },
+    {
+      "key": "dest_airfield",
+      "label": "Destination airfield",
+      "group": "Route",
+      "control": "select \u00b7 ICAO"
+    },
+    {
+      "key": "route_ats",
+      "label": "Route (ATS)",
+      "group": "Route",
+      "control": "text \u00b7 saved routes"
+    },
+    {
+      "key": "entry_point",
+      "label": "Entry point (FIR)",
+      "group": "Route",
+      "control": "select / auto"
+    },
+    {
+      "key": "exit_point",
+      "label": "Exit point (FIR)",
+      "group": "Route",
+      "control": "select / auto"
+    },
+    {
+      "key": "overflight_pts",
+      "label": "Overflight points",
+      "group": "Route",
+      "control": "text"
+    },
+    {
+      "key": "cruising_level",
+      "label": "Cruising level",
+      "group": "Route",
+      "control": "text"
+    },
+    {
+      "key": "eta",
+      "label": "ETA (per leg)",
+      "group": "Route",
+      "control": "time"
+    },
+    {
+      "key": "etd",
+      "label": "ETD (per leg)",
+      "group": "Route",
+      "control": "time"
+    },
+    {
+      "key": "alternates",
+      "label": "Alternate airfields",
+      "group": "Route",
+      "control": "multi-select"
+    },
+    {
+      "key": "dangerous_goods",
+      "label": "Carrying dangerous goods",
+      "group": "Cargo",
+      "control": "toggle"
+    },
+    {
+      "key": "dg_un",
+      "label": "UN number",
+      "group": "Cargo",
+      "control": "select / text"
+    },
+    {
+      "key": "dg_class",
+      "label": "Class / division",
+      "group": "Cargo",
+      "control": "text"
+    },
+    {
+      "key": "dg_weight",
+      "label": "Gross weight",
+      "group": "Cargo",
+      "control": "number"
+    },
+    {
+      "key": "dg_packages",
+      "label": "No. of packages",
+      "group": "Cargo",
+      "control": "number"
+    },
+    {
+      "key": "cargo_desc",
+      "label": "Cargo description",
+      "group": "Cargo",
+      "control": "text"
+    },
+    {
+      "key": "photo_sensor",
+      "label": "Photo / sensor equipment",
+      "group": "Cargo",
+      "control": "y-n"
+    },
+    {
+      "key": "armament",
+      "label": "Armament",
+      "group": "Cargo",
+      "control": "text / y-n"
+    },
+    {
+      "key": "ew_equipment",
+      "label": "Electronic-warfare equipment",
+      "group": "Cargo",
+      "control": "text / y-n"
+    },
+    {
+      "key": "poc_name",
+      "label": "POC \u2014 name",
+      "group": "Admin",
+      "control": "FIXED / edit"
+    },
+    {
+      "key": "poc_tel",
+      "label": "POC \u2014 telephone",
+      "group": "Admin",
+      "control": "FIXED / edit"
+    },
+    {
+      "key": "poc_email",
+      "label": "POC \u2014 email",
+      "group": "Admin",
+      "control": "FIXED / edit"
+    },
+    {
+      "key": "requesting_state",
+      "label": "Requesting state",
+      "group": "Admin",
+      "control": "FIXED"
+    },
+    {
+      "key": "reference_number",
+      "label": "Reference number",
+      "group": "Admin",
+      "control": "auto / text"
+    },
+    {
+      "key": "amendment_number",
+      "label": "Amendment number",
+      "group": "Admin",
+      "control": "auto / text"
+    },
+    {
+      "key": "remarks",
+      "label": "Remarks",
+      "group": "Admin",
+      "control": "textarea"
+    }
+  ],
+  "aircraft": {
+    "frequent": [
+      {
+        "type": "A330 MRTT",
+        "tails": [
+          "760",
+          "761",
+          "762",
+          "763",
+          "764"
+        ],
+        "mtow": 233000
+      },
+      {
+        "type": "C-130",
+        "tails": [
+          "720",
+          "721",
+          "722",
+          "723",
+          "724",
+          "725"
+        ],
+        "mtow": 70300
+      },
+      {
+        "type": "F-16C/D",
+        "tails": [
+          "601",
+          "602",
+          "603",
+          "604",
+          "605",
+          "606",
+          "607",
+          "608"
+        ],
+        "mtow": 21772
+      },
+      {
+        "type": "F-15SG",
+        "tails": [
+          "801",
+          "802",
+          "803",
+          "804",
+          "805",
+          "806"
+        ],
+        "mtow": 36741
+      }
+    ],
+    "rest": [
+      {
+        "type": "G550 AEW",
+        "tails": [
+          "010",
+          "011",
+          "012",
+          "013"
+        ]
+      },
+      {
+        "type": "M-346",
+        "tails": [
+          "150",
+          "151",
+          "152"
+        ]
+      },
+      {
+        "type": "PC-21",
+        "tails": [
+          "120",
+          "121"
+        ]
+      },
+      {
+        "type": "AH-64D Apache",
+        "tails": [
+          "070",
+          "071"
+        ]
+      },
+      {
+        "type": "CH-47F Chinook",
+        "tails": [
+          "880",
+          "881"
+        ]
+      },
+      {
+        "type": "H225M",
+        "tails": [
+          "260",
+          "261"
+        ]
+      },
+      {
+        "type": "S-70B Seahawk",
+        "tails": [
+          "310",
+          "311"
+        ]
+      },
+      {
+        "type": "Fokker 50",
+        "tails": [
+          "701",
+          "702"
+        ]
+      }
+    ]
+  },
+  "purposes": [
+    "Exercise deployment",
+    "Air recovery",
+    "HADR response",
+    "Training",
+    "VIP",
+    "Ferry / positioning"
+  ],
+  "airfields": [
+    {
+      "name": "Changi",
+      "icao": "WSSS"
+    },
+    {
+      "name": "Paya Lebar",
+      "icao": "WSAP"
+    },
+    {
+      "name": "Tengah",
+      "icao": "WSAT"
+    },
+    {
+      "name": "Udon Thani",
+      "icao": "VTUD"
+    },
+    {
+      "name": "King Khalid Intl",
+      "icao": "OERK"
+    },
+    {
+      "name": "Darwin",
+      "icao": "YPDN"
+    }
+  ],
+  "poc": {
+    "name": "PlansHub AOCG",
+    "tel": "+65 0000 0000",
+    "email": "PLANSHUB_AOCG@MINDEF.GOV.SG"
+  },
+  "countries": [
+    {
+      "name": "Indonesia",
+      "iso": "IDN",
+      "format": "docx",
+      "template": "indonesia.docx",
+      "family": "DCR",
+      "leadDays": 7,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Malaysia",
+      "iso": "MYS",
+      "format": "docx",
+      "template": "malaysia.docx",
+      "family": "DCR",
+      "leadDays": 7,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Thailand",
+      "iso": "THA",
+      "format": "docx",
+      "template": "thailand.docx",
+      "family": "DCR",
+      "leadDays": 14,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Vietnam",
+      "iso": "VNM",
+      "format": "doc",
+      "template": "vietnam.docx",
+      "family": "DCR",
+      "leadDays": 5,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "Cambodia",
+      "iso": "KHM",
+      "format": "doc",
+      "template": "cambodia.docx",
+      "family": "DCR",
+      "leadDays": 7,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "Myanmar",
+      "iso": "MMR",
+      "format": "doc",
+      "template": "myanmar.docx",
+      "family": "DCR",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "Saudi Arabia",
+      "iso": "SAU",
+      "format": "doc",
+      "template": "saudi_arabia.docx",
+      "family": "DCR",
+      "leadDays": 14,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "Taiwan",
+      "iso": "TWN",
+      "format": "doc",
+      "template": "taiwan.docx",
+      "family": "DCR",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "India",
+      "iso": "IND",
+      "format": "doc",
+      "template": "india.docx",
+      "family": "DCR",
+      "leadDays": 18,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx; mil field long lead"
+    },
+    {
+      "name": "Greece",
+      "iso": "GRC",
+      "format": "docx",
+      "template": "greece.docx",
+      "family": "DIC",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Spain",
+      "iso": "ESP",
+      "format": "docx",
+      "template": "spain.docx",
+      "family": "DIC",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Italy",
+      "iso": "ITA",
+      "format": "doc",
+      "template": "italy.docx",
+      "family": "DIC",
+      "leadDays": 12,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "convert .doc\u2192.docx"
+    },
+    {
+      "name": "France",
+      "iso": "FRA",
+      "format": "xlsx",
+      "template": "france.xlsx",
+      "family": "DIC",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "Excel \u2014 SheetJS, cell map"
+    },
+    {
+      "name": "Jordan",
+      "iso": "JOR",
+      "format": "pdf",
+      "template": "jordan.pdf",
+      "family": "DIC",
+      "leadDays": 14,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "FLAT pdf \u2014 overlay or rebuild as docx"
+    },
+    {
+      "name": "Germany",
+      "iso": "DEU",
+      "format": "docx",
+      "template": "germany.docx",
+      "family": "Bespoke",
+      "leadDays": 7,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Egypt",
+      "iso": "EGY",
+      "format": "docx",
+      "template": "egypt.docx",
+      "family": "Bespoke",
+      "leadDays": 14,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Oman",
+      "iso": "OMN",
+      "format": "docx",
+      "template": "oman.docx",
+      "family": "Bespoke",
+      "leadDays": 12,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": ""
+    },
+    {
+      "name": "Bahrain",
+      "iso": "BHR",
+      "format": "pdf",
+      "template": "bahrain.pdf",
+      "family": "Bespoke",
+      "leadDays": 10,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "FLAT pdf \u2014 cargo/DG heavy"
+    },
+    {
+      "name": "New Zealand",
+      "iso": "NZL",
+      "format": "pdf",
+      "template": "new_zealand.pdf",
+      "family": "Bespoke",
+      "leadDays": 42,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "FLAT pdf \u2014 6-week lead"
+    },
+    {
+      "name": "Australia",
+      "iso": "AUS",
+      "format": "pdf",
+      "template": "australia.pdf",
+      "family": "Bespoke",
+      "leadDays": 42,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "PROBLEM: XFA/dynamic \u2014 manual"
+    },
+    {
+      "name": "Canada",
+      "iso": "CAN",
+      "format": "pdf",
+      "template": "canada.pdf",
+      "family": "Bespoke",
+      "leadDays": 30,
+      "version": 1,
+      "lastVerified": "2026-06-01",
+      "note": "PROBLEM: no extractable text \u2014 manual"
+    }
+  ]
+}
