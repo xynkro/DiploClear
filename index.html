@@ -145,6 +145,20 @@
   .strips-hd .dlall:hover:not(:disabled){background:var(--panel);border-color:var(--ink-faint)}
   .strips-hd .dlall:disabled{opacity:.6}
   .strips-hd .dlall:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  /* stale-batch warning: amber, sits directly above the strips it is talking about */
+  .drift{display:flex;align-items:center;gap:10px;margin:0 2px 12px;padding:11px 14px;border-radius:11px;
+    border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 11%,var(--paper));
+    color:var(--ink);font-size:13.5px;line-height:1.4}
+  .drift[hidden]{display:none}
+  .drift svg{flex:none;color:var(--amber)}
+  .drift span{flex:1}
+  .drift button{flex:none;border:1px solid var(--amber);border-radius:8px;background:var(--amber);color:#1b1402;
+    font-weight:650;font-size:12.5px;height:30px;padding:0 13px;cursor:pointer}
+  .drift button:hover{filter:brightness(1.06)}
+  .drift button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  /* the strips are still downloadable and still honest — just no longer the current flight */
+  #strips.behind .strip{opacity:.72}
+  #strips.behind .strip:hover,#strips.behind .strip:focus-within{opacity:1}
   .empty{border:1px dashed var(--line);border-radius:14px;background:var(--paper);padding:34px;text-align:center;color:var(--ink-faint);font-size:14px}
   .strip{position:relative;display:grid;grid-template-columns:5px 150px 1fr 132px 150px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:11px;overflow:hidden;opacity:0;transform:translateY(8px);animation:rise .42s cubic-bezier(.2,.7,.3,1) forwards}
   @keyframes rise{to{opacity:1;transform:none}}
@@ -343,6 +357,13 @@
     <!-- strips -->
     <div class="strips-hd"><h2>Generated forms</h2><span class="count" id="scount"></span>
       <button class="dlall" id="dlallbtn" style="display:none" onclick="downloadAll()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg><span id="dlalllbl">Download all</span></button></div>
+    <!-- Raised when the flight details change after a batch was generated. The forms below
+         stay valid for the mission they were built from; this says they are behind. -->
+    <div class="drift" id="driftbar" role="status" hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <span>The flight has changed since these were generated. They still carry the earlier mission.</span>
+      <button onclick="generate()">Regenerate</button>
+    </div>
     <div id="strips"><div class="empty">No forms yet. Pick the countries and select <b>Generate</b> — each one appears here, stamped and ready to download.</div></div>
   </div>
 </main>
@@ -505,7 +526,7 @@
   // silently drop a value from the very table the operator signs off on.
   function hesc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function openVerify(iso, nm){
-    const d=buildData(), f=freshness(iso), rv=REVIEWED[iso];
+    const d=activeData(), f=freshness(iso), rv=REVIEWED[iso];
     const rows=[['Aircraft',d.aircraft],['Tail numbers',d.tails],['Callsign',d.callsign],['Captain',d.captain],
       ['Crew',d.crew_n],['From → To',d.sector],['Date',d.date],['Purpose',d.purpose],['Route (ATS)',d.route],['Cargo',d.cargo]];
     document.getElementById('vfTitle').textContent=nm+' — verify before send';
@@ -543,7 +564,9 @@
   function generate(){
     const sel = COUNTRIES.filter(c=>c.on);
     if(!sel.length){ toast("Pick at least one country first"); return; }
-    const d = buildData(); REVIEWED = {};
+    // Freeze the mission. Everything this batch shows, signs and emits reads from here.
+    const d = buildData(); BATCH = { data:d, at:Date.now(), sig:missionSig(d) };
+    REVIEWED = {}; markDrift(false);
     document.getElementById("strips").innerHTML = sel.map((c,i)=>{
       const f = freshness(c.iso); const dcn = `DCR0${42+i}-26`;
       return `<div class="strip" style="animation-delay:${i*70}ms">
@@ -598,6 +621,37 @@
       remarks:"REQUEST FLIGHT CLEARANCE TO BE VALID FOR 72 HOURS. REQUEST OVER-FLIGHT CLEARANCE."
     };
   }
+  // ---- the generated batch: one frozen mission, shared by strip, verify table and file ----
+  // A strip, the sign-off attached to it and the document it downloads must all describe
+  // the SAME mission. Reading the live form at download time breaks that: edit the callsign
+  // after generating and the strip still reads SINGA 12, still carries a named officer's
+  // sign-off, and emits a .docx saying HERON 99. BATCH freezes the mission at Generate;
+  // everything downstream reads the freeze, never the fields.
+  let BATCH = null;                       // { data, at } — null until the first Generate
+  function activeData(){ return BATCH ? BATCH.data : buildData(); }
+  // Identity of a mission for drift detection. Derived from the built data rather than the
+  // inputs, so it moves only when something that actually reaches a form moves.
+  function missionSig(d){ return JSON.stringify(d, Object.keys(d).filter(k=>k!=='dtd').sort()); }
+  // Callsign/date stem for filenames, taken from the frozen mission so the name on disk
+  // matches the content inside it.
+  function nameStem(){ const d=activeData();
+    return { cs:(d.callsign||'SINGA').replace(/ /g,''), dt:(d.date||'').replace(/ /g,'') }; }
+
+  function markDrift(on){
+    const b=document.getElementById('driftbar'); if(!b) return;
+    b.hidden=!on;
+    document.getElementById('strips').classList.toggle('behind', !!on);
+  }
+  // Called whenever any flight detail changes. Compares the live mission against the frozen
+  // one; a batch that no longer matches is flagged rather than silently re-pointed, because
+  // the sign-offs on screen were given for the frozen mission.
+  function checkDrift(){ if(!BATCH) return; markDrift(missionSig(buildData()) !== BATCH.sig); }
+  // Tail numbers, dangerous goods and aircraft type change outside plain input events,
+  // so poll as well as listen. Cheap: a string compare on a dozen fields.
+  document.addEventListener('input', checkDrift, true);
+  document.addEventListener('change', checkDrift, true);
+  setInterval(checkDrift, 700);
+
   // While _collect is active every generated form is gathered for the ZIP instead of
   // being saved on its own. All four engines funnel through here, so this is the only
   // place that has to know about bulk mode.
@@ -613,9 +667,9 @@
     const PizZip=window.PizZip, DT=window.docxtemplater||window.Docxtemplater;
     if(!PizZip||!DT||!window.TEMPLATES){ toast("Doc engine not loaded"); return; }
     const doc=new DT(new PizZip(window.TEMPLATES[key],{base64:true}),{paragraphLoop:true,linebreaks:true});
-    doc.render(buildData());
+    doc.render(activeData());
     const blob=doc.getZip().generate({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    const {cs, dt} = nameStem();
     downloadBlob(blob, `${nm}_${cs}_${dt}_${v}.docx`);
     toast(`${nm} clearance generated — check downloads`);
   }
@@ -625,7 +679,7 @@
     const PizZip=window.PizZip;
     if(!PizZip||!window.TEMPLATES){ toast("Doc engine not loaded"); return; }
     const zip=new PizZip(window.TEMPLATES[key],{base64:true});
-    const data=buildData();
+    const data=activeData();
     const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     (zip.file(/xl\/(worksheets\/.*|sharedStrings)\.xml/)||[]).forEach(f=>{
       let s=f.asText();
@@ -633,7 +687,7 @@
       zip.file(f.name, s);
     });
     const blob=zip.generate({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    const {cs, dt} = nameStem();
     downloadBlob(blob, `${nm}_${cs}_${dt}_${v}.xlsx`);
     toast(`${nm} clearance generated — check downloads`);
   }
@@ -727,7 +781,7 @@
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
     const pg = i => pages[(i||1)-1] || pages[0];   // 1-based page; defaults to first
-    const data = buildData();
+    const data = activeData();
     for(const b of (PDFMAP[key].blanks||[])){ const p=pg(b.page), H=p.getHeight();
       p.drawRectangle({x:b.x, y:H-b.bot-1, width:b.w, height:(b.bot-b.top)+2, color:rgb(1,1,1)}); }
     // shrink a value until it fits the clear space on its line (never overrun into the next field)
@@ -745,7 +799,7 @@
       }
     }
     const out = await pdf.save();
-    const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+    const {cs, dt} = nameStem();
     downloadBlob(new Blob([out],{type:'application/pdf'}), `${nm}_${cs}_${dt}_${v}.pdf`);
     toast(`${nm} clearance generated — check downloads`);
   }
@@ -812,7 +866,7 @@
       const zip = new window.PizZip();
       const bufs = await Promise.all(files.map(f=>f.blob.arrayBuffer()));
       files.forEach((f,i)=> zip.file(f.name, new Uint8Array(bufs[i])));
-      const cs=((fld('f_cs')+fld('f_csno'))||'SINGA').replace(/ /g,''), dt=fld('f_date').replace(/ /g,'');
+      const {cs, dt} = nameStem();
       downloadBlob(zip.generate({type:'blob',mimeType:'application/zip'}), `DiploClear_${cs}_${dt}.zip`);
       toast(failed.length
         ? `${files.length} forms in one archive · ${failed.length} failed (${failed.join(', ')})`
