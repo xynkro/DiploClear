@@ -32,7 +32,7 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
    else{p.drawRectangle({x:f.x,y:H-f.bot-1,width:f.w,height:(f.bot-f.top)+2,color:rgb(1,1,1)}); p.drawText(val,{x:f.x+1.5,y:H-f.bot+2.5,size:f.size,font,color:rgb(.05,.05,.05)});}}
  return Buffer.from(await pdf.save()); }
 (async()=>{
- const rows=[]; let ok=0;
+ const rows=[]; let ok=0; const bundle=[];   // bundle = what "Download all" packs into the ZIP
  for(const c of COUNTRIES){ const iso=c.iso; let route,buf,err;
    try{
      if(TPL[iso]){route="docx"; buf=genDoc(TPL[iso]);}
@@ -42,6 +42,9 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
      else {route="NONE";}
    }catch(e){err=e.message;}
    if(buf&&route.includes("pdf")) fs.writeFileSync("/tmp/gen_"+iso+".pdf", buf);
+   if(buf){ const cs=data.callsign.replace(/ /g,''), dt=data.date.replace(/ /g,'');
+     const ext = route==="xlsx"?"xlsx":(route.includes("pdf")?"pdf":"docx");
+     bundle.push({name: route==="blank-pdf" ? `${c.nm}_form_to_complete.pdf` : `${c.nm}_${cs}_${dt}_v1.${ext}`, buf}); }
    const kb=buf?Math.round(buf.length/1024):0; if(buf&&buf.length>500&&!err) ok++;
    rows.push(`${c.nm.padEnd(13)} ${iso} ${route.padEnd(9)} ${String(kb).padStart(5)}KB ${err?('ERR '+err):'ok'}`);
  }
@@ -49,4 +52,55 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  console.log(rows.join("\n"));
  console.log(`\n==> ${ok}/${COUNTRIES.length} generated a valid non-empty file`);
  console.log("LEAKWORDS check runs separately via pdftotext");
+
+ // ---- verify the "Download all" archive the browser builds from these same buffers ----
+ const zip=new PizZip();
+ for(const f of bundle) zip.file(f.name, f.buf);
+ const out=zip.generate({type:"nodebuffer"});
+ const names=bundle.map(f=>f.name);
+ const dupes=names.filter((n,i)=>names.indexOf(n)!==i);
+ const rt=new PizZip(out);                       // read it back the way a recipient would
+ const back=Object.keys(rt.files);
+ const empty=back.filter(n=>rt.file(n).asUint8Array().length===0);
+ console.log(`\nARCHIVE  files=${bundle.length}  reopened=${back.length}  dupes=${dupes.length}  empty=${empty.length}  size=${(out.length/1048576).toFixed(2)}MB`);
+ if(dupes.length) console.log("  DUPLICATE NAMES:", dupes);
+ if(empty.length) console.log("  EMPTY MEMBERS:", empty);
+ const bad = bundle.length!==COUNTRIES.length || back.length!==COUNTRIES.length || dupes.length || empty.length;
+ console.log(bad ? "==> ARCHIVE FAILED" : `==> ARCHIVE OK — all ${COUNTRIES.length} forms present, unique, non-empty`);
+ fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
+})();
+
+// ---- invariant: strip, sign-off and emitted file must describe ONE frozen mission ----
+// Regression guard for the late-edit bug: generating with SINGA 12, signing off, then
+// changing the callsign used to emit a HERON 99 document from a strip still badged
+// "reviewed · <name>". Every generation path must read the frozen batch, never the inputs.
+// Scoped to the engines themselves — buildData() and saveMission() read live fields by design.
+function frozenMissionCheck(src){
+  const fails = [];
+  const ENGINES = ["generateDoc","generateXlsx","generatePdf","downloadFlatBlank","downloadAll"];
+  for(const fn of ENGINES){
+    const i = src.indexOf("function "+fn+"("), j = src.indexOf("\n  }", i);   // to its closing brace
+    if(i < 0){ fails.push(`engine ${fn}() not found`); continue; }
+    const body = src.slice(i, j);
+    if(/buildData\(\)/.test(body))  fails.push(`${fn}() rebuilds the mission from live inputs — use activeData()`);
+    if(/fld\('f_/.test(body))        fails.push(`${fn}() reads a live input field — use activeData()/nameStem()`);
+  }
+  // openVerify shows the operator what they are putting their name to: must be the freeze
+  if(!/const d=activeData\(\), f=freshness/.test(src)) fails.push("verify modal still reads live fields");
+  for(const [re,what] of [[/let BATCH\s*=/,"BATCH freeze"],[/function activeData\(/,"activeData()"],
+                          [/function missionSig\(/,"missionSig()"],[/function checkDrift\(/,"checkDrift()"],
+                          [/BATCH\s*=\s*\{\s*data:d/,"generate() stores the freeze"]])
+    if(!re.test(src)) fails.push(`missing ${what}`);
+  return fails;
+}
+(() => {
+  const fails = frozenMissionCheck(html);
+  console.log(`\nFROZEN-MISSION  engines checked=5  violations=${fails.length}`);
+  console.log(fails.length ? "==> FROZEN-MISSION FAILED\n    - " + fails.join("\n    - ")
+                           : "==> FROZEN-MISSION OK — strip, sign-off and file all read one frozen mission");
+  // positive control: re-introducing the bug in a copy of the source must be caught
+  const bugged = html.replace("doc.render(activeData());","doc.render(buildData());");
+  const caught = frozenMissionCheck(bugged).length > fails.length;
+  console.log(caught ? "    control: reintroducing buildData() in generateDoc IS caught"
+                     : "    !! CONTROL FAILED — the check is blind, fix it before trusting it");
 })();
