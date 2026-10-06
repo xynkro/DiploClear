@@ -216,6 +216,21 @@
   .modal .mh h3{margin:0;font-size:15.5px;font-weight:600;flex:1}
   .modal .mh .x{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--paper);display:grid;place-items:center;color:var(--ink-soft);cursor:pointer}
   .modal .mb{padding:8px 12px;overflow:auto}
+  .modal .box.wide{width:min(980px,96vw);max-height:92vh}
+  .modal .mh .pvname{font-size:11.5px;color:var(--ink-faint);margin-right:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}
+  .pvbody{padding:0;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--panel)}
+  .pvbody iframe{flex:1;width:100%;min-height:62vh;border:0;background:#fff}
+  .pvbody .pvwait{padding:46px;text-align:center;color:var(--ink-faint);font-size:13.5px}
+  /* Office formats have no faithful in-browser renderer. Rather than show an approximation
+     of a document that gets filed with a foreign government, show the values that fill it. */
+  .pvbody .pvoffice{padding:18px 20px;overflow:auto}
+  .pvbody .pvoffice .why{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-soft);
+    background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:14px;line-height:1.45}
+  .pvbody .pvoffice .why svg{flex:none;margin-top:1px;color:var(--ink-faint)}
+  .pvbody .pvoffice table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .pvbody .pvoffice td{padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
+  .pvbody .pvoffice tr:last-child td{border-bottom:0}
+  .pvbody .pvoffice td:first-child{color:var(--ink-faint);width:38%}
   .tcell{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:8px;cursor:pointer;font-family:var(--mono);font-size:14px}
   .tcell:hover{background:var(--panel)}
   .tcell .chk{width:18px;height:18px;border-radius:5px;border:1.5px solid #c2cad3;display:grid;place-items:center;color:#fff;font-size:12px}
@@ -393,6 +408,19 @@
   </div>
 </div>
 
+<!-- Preview renders the bytes the Download button emits — same frozen mission, same engine,
+     same file. It is a look at the real document, not a reconstruction of it. -->
+<div class="modal" id="previewmodal">
+  <div class="box wide">
+    <div class="mh"><h3 id="pvTitle">Preview</h3>
+      <span class="pvname mono" id="pvName"></span>
+      <button class="x" onclick="closePreview()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="mb pvbody" id="pvBody"></div>
+    <div class="mf"><span class="sel" id="pvNote"></span>
+      <button class="done" id="pvDl" onclick="pvDownload()">Download this form</button></div>
+  </div>
+</div>
+
 <div class="modal" id="verifymodal">
   <div class="box">
     <div class="mh"><h3 id="vfTitle">Verify before send</h3><button class="x" onclick="closeVerify()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
@@ -539,6 +567,59 @@
     document.getElementById('verifymodal').classList.add('show');
   }
   function closeVerify(){ document.getElementById('verifymodal').classList.remove('show'); }
+
+  // ---- preview: look at the real file, not a reconstruction of it ----
+  // Runs the same engine the Download button runs, over the same frozen mission, and shows
+  // the bytes that come out. Anything that cannot be rendered faithfully is NOT approximated:
+  // a pretty-but-wrong preview of a form filed with a foreign government is the bug we just
+  // spent this release removing.
+  let _pv = null, _pvBuilding = false;             // { blob, name, url }
+  function pvRevoke(){ if(_pv && _pv.url){ URL.revokeObjectURL(_pv.url); } _pv=null; }
+  function pvDownload(){ if(_pv) downloadBlob(_pv.blob, _pv.name); }
+  function closePreview(){
+    document.getElementById('previewmodal').classList.remove('show');
+    document.getElementById('pvBody').innerHTML='';   // drop the iframe so the PDF unloads
+    pvRevoke();
+  }
+  async function openPreview(iso, nm, fmt, v){
+    const m=document.getElementById('previewmodal'), body=document.getElementById('pvBody');
+    document.getElementById('pvTitle').textContent = nm+' — preview';
+    document.getElementById('pvName').textContent = '';
+    document.getElementById('pvNote').textContent = '';
+    body.innerHTML = '<div class="pvwait">Building the form…</div>';
+    m.classList.add('show');
+    pvRevoke();
+    let captured=null;
+    const real = downloadBlob;
+    window.downloadBlob = (blob,name)=>{ captured={blob,name}; };   // intercept, do not save
+    _pvBuilding = true;
+    try{ await dlOne(iso, nm, fmt, v); }
+    catch(e){ console.error(e); body.innerHTML='<div class="pvwait">Could not build this form — see console.</div>'; return; }
+    finally{ window.downloadBlob = real; _pvBuilding = false; }
+    if(!captured){ body.innerHTML='<div class="pvwait">Nothing was produced for this country.</div>'; return; }
+
+    _pv = { blob:captured.blob, name:captured.name, url:null };
+    document.getElementById('pvName').textContent = captured.name;
+    const isPdf = /\.pdf$/i.test(captured.name);
+    if(isPdf){
+      // The browser's own PDF viewer renders the exact bytes — faithful by construction.
+      _pv.url = URL.createObjectURL(captured.blob);
+      body.innerHTML = `<iframe title="${hesc(nm)} clearance form preview" src="${_pv.url}#toolbar=1&navpanes=0"></iframe>`;
+      document.getElementById('pvNote').textContent = `${Math.round(captured.blob.size/1024)} KB · this is the file that downloads`;
+    } else {
+      const d=activeData();
+      const rows=[['Aircraft',d.aircraft],['Tail numbers',d.tails],['Callsign',d.callsign],['Captain',d.captain],
+        ['Crew',d.crew_n],['Pax',d.pax],['From → To',d.sector],['Date',d.date],['Purpose',d.purpose],
+        ['Route (ATS)',d.route],['Cargo',d.cargo]];
+      body.innerHTML = `<div class="pvoffice">
+        <div class="why"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span>A browser cannot render ${hesc(fmt)} faithfully, and an approximation of a form that goes
+        to a host nation would be worse than none. These are the values written into the host's own
+        template — open the downloaded file to see the final layout.</span></div>
+        <table><tbody>${rows.map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.getElementById('pvNote').textContent = `${Math.round(captured.blob.size/1024)} KB ${hesc(fmt)} · built and ready`;
+    }
+  }
   function signoff(){
     const iso=document.getElementById('vfState').dataset.iso, by=(document.getElementById('vfBy').value.trim()||'—');
     REVIEWED[iso]={by, at:fmtDate(new Date().toISOString())};
@@ -582,6 +663,7 @@
         <div class="stampwrap"><div class="stamp"><div><div class="t">DIP<br>CLR</div><div class="n">${dcn}</div></div></div></div>
         <div class="act">
           <button class="dl" onclick="dl('${c.iso}','${c.nm}','${c.fmt}','${c.v}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg>Download</button>
+          <button class="vbtn" onclick="openPreview('${c.iso}','${c.nm.replace(/'/g,'')}','${c.fmt}','${c.v}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
           <button class="vbtn" onclick="openVerify('${c.iso}','${c.nm.replace(/'/g,'')}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>Verify &amp; sign</button>
           <div class="ver" id="rev-${c.iso}">⚠ not reviewed</div>
         </div>
@@ -879,7 +961,7 @@
   }
 
   let tt;
-  function toast(m){ if(_collect) return; const t=document.getElementById("toast"); document.getElementById("toastmsg").textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),2400); }
+  function toast(m){ if(_collect || _pvBuilding) return; const t=document.getElementById("toast"); document.getElementById("toastmsg").textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),2400); }
 
   // ---- theme (persisted) ----
   function applyTheme(t){ if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); else document.documentElement.removeAttribute('data-theme'); }

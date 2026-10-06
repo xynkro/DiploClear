@@ -85,6 +85,15 @@ function frozenMissionCheck(src){
     if(/buildData\(\)/.test(body))  fails.push(`${fn}() rebuilds the mission from live inputs — use activeData()`);
     if(/fld\('f_/.test(body))        fails.push(`${fn}() reads a live input field — use activeData()/nameStem()`);
   }
+  // preview must run the SAME engine as download, over the same freeze — a preview built by
+  // any other path could show something the recipient never receives
+  if(!/async function openPreview\(/.test(src)) fails.push("openPreview() missing");
+  else {
+    const i=src.indexOf("async function openPreview("), body=src.slice(i, src.indexOf("\n  }", i));
+    if(!/await dlOne\(/.test(body))      fails.push("openPreview() does not go through dlOne() — it could diverge from Download");
+    if(/buildData\(\)/.test(body))      fails.push("openPreview() rebuilds the mission from live inputs");
+    if(!/activeData\(\)/.test(body))    fails.push("openPreview() office table does not read the freeze");
+  }
   // openVerify shows the operator what they are putting their name to: must be the freeze
   if(!/const d=activeData\(\), f=freshness/.test(src)) fails.push("verify modal still reads live fields");
   for(const [re,what] of [[/let BATCH\s*=/,"BATCH freeze"],[/function activeData\(/,"activeData()"],
