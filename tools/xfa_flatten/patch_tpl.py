@@ -13,7 +13,7 @@ TWO jobs:
     (c) a structural/control value. Anything new the vendor adds in a future revision is
     therefore cleared by default rather than silently leaking.
 """
-import re, sys
+import os, re, sys
 import pikepdf
 from lxml import etree
 
@@ -133,11 +133,20 @@ def main(src="australia.pdf", dst="australia_patched.pdf"):
     for tag, v in cleared: print("    <%-22s> %r" % (tag, v))
 
     # hard gate: nothing sensitive may survive
+    # The token list lives in leakwords.local.txt, which is gitignored: it is itself a
+    # named officer's details and another sortie's DG manifest. Keeping it out of the
+    # repo means publishing this pipeline does not publish what it exists to remove.
+    words_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "leakwords.local.txt")
+    if not os.path.exists(words_file):
+        print("\n  !! leakwords.local.txt missing — refusing to pass a scrub that was never checked")
+        sys.exit(2)
+    with open(words_file, encoding="utf-8") as fh:
+        bads = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+    if not bads:
+        print("\n  !! leakwords.local.txt is empty — refusing to pass an unchecked scrub"); sys.exit(2)
     leaked = []
     txt = out.decode("utf-8", "replace")
-    for bad in ["REDACTED_NAME", "REDACTED_NAME", "REDACTED_PHONE", "Marine Marker", "Flares",
-                "Cartridge", "Cart Power", "ROCKHAMPTON", "KIKEM", "ZNOV25", "NEO",
-                "LUDPU", "TINDAL", "730, 731"]:
+    for bad in bads:
         if bad in txt: leaked.append(bad)
     if leaked:
         print("\n  !! SCRUB FAILED, residue: %s" % leaked); sys.exit(1)

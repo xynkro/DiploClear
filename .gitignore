@@ -12,3 +12,6 @@ Generated Forms/
 node_modules/
 *.pyc
 __pycache__/
+
+# leak-check token list: lists the PII it guards against — never publish
+tools/xfa_flatten/leakwords.local.txt
