@@ -63,6 +63,14 @@
   #login input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(201,138,27,.25)}
   #login .enter{margin-top:8px;width:100%;height:46px;border:none;border-radius:var(--r);background:var(--amber);color:#2A1B02;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s}
   #login .enter:hover{filter:brightness(1.06)}
+  /* the identity card sits on the dark login panel, so it cannot inherit console colours */
+  #login .idwho{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16)}
+  #login .idwho b{color:#fff;font-size:14.5px;font-weight:600;font-family:var(--sans)}
+  #login .idwho span{color:#9FB3C4}
+  #login .idwho .av{background:var(--amber);color:#2A1B02}
+  #login .linkbtn{color:#9FB3C4}
+  #login .linkbtn:hover{color:#fff}
+  #login .field label .hint{color:#6B8093}
   #login .foot{font-size:12px;color:#6B8093;line-height:1.6}
   #login .foot .badge{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid rgba(255,255,255,.16);border-radius:5px;padding:2px 7px;margin-right:6px;color:#9FB3C4}
   #login .hero{position:relative;background:var(--navy-900);overflow:hidden}
@@ -264,6 +272,16 @@
   .vfsign input{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0 11px;font-size:14px}
   .vfsign input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
   .vfdone{font-size:12.5px;color:var(--cleared);margin-top:9px;font-weight:600}
+  .field label .hint{text-transform:none;letter-spacing:0;color:var(--ink-faint);font-weight:400;margin-left:6px;font-size:10.5px}
+  .idwho{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--paper)}
+  .idwho .av{width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+  .idwho b{display:block;font-size:14px}
+  .idwho span{font-size:12px;color:var(--ink-faint)}
+  .linkbtn{display:block;width:100%;margin-top:9px;background:none;border:0;color:var(--ink-faint);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .linkbtn:hover{color:var(--ink)}
+  .sethr{height:1px;background:var(--line);margin:15px 0 3px}
+  .who{cursor:pointer}
+  .who:hover{opacity:.78}
 </style>
 </head>
 <body>
@@ -275,11 +293,27 @@
     <div>
       <h1>Clearance at the<br>speed of the <em>mission</em>.</h1>
       <p class="sub">Enter a flight once. Get every country's diplomatic clearance form — correct, formatted, ready to send.</p>
-      <div class="field"><label>Operator</label><input value="RSAF · Plans Hub, AOCG" readonly></div>
-      <div class="field"><label>Passcode</label><input type="password" value="••••••" aria-label="Passcode"></div>
-      <button class="enter" onclick="enterConsole()">Open console
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </button>
+      <!-- This asks for identity, not credentials. The app holds no secrets and runs from a
+           file anyone with the file can open, so a passcode box would claim an access control
+           that does not exist. What it does need is a name, because every form carries a
+           human sign-off and an unattributed one is worth nothing. -->
+      <div id="idsetup">
+        <div class="field"><label>Your name <span class="hint">signs every form you release</span></label>
+          <input id="id_name" placeholder="e.g. MAJ Tan" autocomplete="name"></div>
+        <div class="field"><label>Unit or desk <span class="hint">optional</span></label>
+          <input id="id_unit" placeholder="e.g. Plans Hub, AOCG" autocomplete="organization"></div>
+        <button class="enter" onclick="saveIdentity()">Start
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div id="idback" style="display:none">
+        <div class="field"><label>Signed in as</label>
+          <div class="idwho"><span class="av" id="id_av"></span><div><b id="id_who"></b><span id="id_whounit"></span></div></div></div>
+        <button class="enter" onclick="enterConsole()">Open console
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <button class="linkbtn" onclick="changeIdentity()">Not you? Change</button>
+      </div>
     </div>
     <div class="foot"><span class="badge">OFFLINE</span><span class="badge">SANITISED DATA</span><br>Runs in the browser. Nothing leaves this machine.</div>
   </div>
@@ -295,8 +329,8 @@
   <header class="topbar">
     <a class="mark" href="#"><span class="glyph"><svg viewBox="0 0 24 24"><path fill="#fff" d="M2.5 13.2 21 4.5c.9-.4 1.7.5 1.2 1.4l-9 16.4c-.4.8-1.6.6-1.8-.3l-1.3-6-6-1.4c-.9-.2-1-1.5-.3-1.8Z"/></svg></span><span class="wm"><b>Diplo</b><span>Clear</span></span></a>
     <div class="sp"></div>
-    <div class="stat"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><div class="v">11h 20m</div><div class="l">saved this week</div></div></div>
-    <div class="who"><span class="av">RN</span><span>MR Ronnie · Plans Hub</span></div>
+    <div class="stat"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><div class="v" id="statv">—</div><div class="l" id="statl">this week</div></div></div>
+    <div class="who" id="whobox" title="Click to change who signs the forms" onclick="openSettings()"><span class="av" id="whoav"></span><span id="wholbl"></span></div>
     <button class="iconbtn" id="themebtn" title="Light / dark mode" aria-label="Toggle theme" onclick="toggleTheme()"><svg id="themeicon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg></button>
     <button class="iconbtn" title="Settings" aria-label="Settings" onclick="openSettings()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6 2 2 0 1 1 13 4.6a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 11a2 2 0 1 1 0 4Z"/></svg></button>
   </header>
@@ -308,7 +342,7 @@
       <div class="card">
         <div class="entrybar">
           <div class="seg"><button class="on" id="seg-scratch" onclick="setEntry('scratch')">Build from scratch</button><button id="seg-import" onclick="setEntry('import')">Import a filled request</button></div>
-          <span class="entryhint" id="entryhint">Ronnie knows this one — fill it in directly.</span>
+          <span class="entryhint" id="entryhint">You know this one — fill it in directly.</span>
         </div>
         <div id="scratchview">
         <div class="presetbar">
@@ -395,13 +429,16 @@
   <div class="box">
     <div class="mh"><h3>Settings</h3><span class="mono" style="font-size:11.5px;color:var(--ink-faint)">reference data · saved on this machine</span><button class="x" onclick="closeSettings()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <div class="mb" style="padding:14px 18px">
+      <label class="setlbl">You <span>the name that signs every form you release</span></label>
+      <div class="setrow"><input id="set_myname" placeholder="Your name — e.g. MAJ Tan"><input id="set_myunit" placeholder="Unit or desk — e.g. Plans Hub, AOCG"></div>
+      <div class="sethr"></div>
       <label class="setlbl">Aircraft fleet <span>one per line · TYPE | tail, tail, … · top 4 rows = frequent</span></label>
       <textarea id="set_fleet" rows="6"></textarea>
       <div class="setrow">
         <div><label class="setlbl">Airfields <span>Name (ICAO)</span></label><textarea id="set_air" rows="5"></textarea></div>
         <div><label class="setlbl">Purposes</label><textarea id="set_pur" rows="5"></textarea></div>
       </div>
-      <label class="setlbl">Point of contact</label>
+      <label class="setlbl">Point of contact <span>shown in this app only — host templates carry their own baked-in contact block</span></label>
       <div class="setrow3"><input id="set_pocname" placeholder="Name"><input id="set_poctel" placeholder="Tel"><input id="set_pocemail" placeholder="Email"></div>
     </div>
     <div class="mf"><button class="ghost" onclick="resetSettings()">Reset to defaults</button><button class="done" onclick="saveSettings()">Save settings</button></div>
@@ -524,11 +561,76 @@
     document.getElementById("seg-import").classList.toggle("on",mode==='import');
     document.getElementById("importview").classList.toggle("show",mode==='import');
     document.getElementById("scratchview").style.display = mode==='import'?'none':'block';
-    document.getElementById("entryhint").textContent = mode==='import' ? "Unit filled the request — import it, then review." : "Ronnie knows this one — fill it in directly.";
+    document.getElementById("entryhint").textContent = mode==='import' ? "Unit filled the request — import it, then review." : "You know this one — fill it in directly.";
   }
   function doImport(){ setEntry('scratch'); toast("Request imported — flight filled, please review"); }
 
-  function enterConsole(){ document.getElementById("login").style.display="none"; document.getElementById("console").style.display="block"; }
+  // ---- who is signing ----------------------------------------------------------------
+  // The app has no accounts and no passcode: it is a single file, offline, with no secrets
+  // to guard, and a login box would assert a control it does not have. What the trust layer
+  // genuinely needs is a name to put on a release, so the first screen collects that instead.
+  let ME = {name:"", unit:""};
+  function initials(n){ return (n||"").replace(/\b(MR|MS|MRS|DR|MAJ|CPT|LTC|COL|ME[0-9]|CFC|SLTC)\b/gi,"")
+      .trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase() || "—"; }
+  function loadIdentity(){
+    try{ const r=localStorage.getItem('dc_identity'); if(r) ME=JSON.parse(r)||ME; }catch(e){}
+    paintIdentity();
+    const known = !!(ME.name||"").trim();
+    const a=document.getElementById('idsetup'), b=document.getElementById('idback');
+    if(a) a.style.display = known ? 'none' : 'block';
+    if(b) b.style.display = known ? 'block' : 'none';
+    if(known){
+      document.getElementById('id_av').textContent = initials(ME.name);
+      document.getElementById('id_who').textContent = ME.name;
+      document.getElementById('id_whounit').textContent = ME.unit||'';
+    }
+  }
+  function paintIdentity(){
+    const lbl=document.getElementById('wholbl'), av=document.getElementById('whoav');
+    if(lbl) lbl.textContent = ME.name ? (ME.name + (ME.unit?' · '+ME.unit:'')) : 'Set who signs';
+    if(av) av.textContent = ME.name ? initials(ME.name) : '?';
+    const n=document.getElementById('set_myname'), u=document.getElementById('set_myunit');
+    if(n && document.activeElement!==n) n.value = ME.name||'';
+    if(u && document.activeElement!==u) u.value = ME.unit||'';
+  }
+  function persistIdentity(){ try{ localStorage.setItem('dc_identity', JSON.stringify(ME)); }catch(e){} }
+  function saveIdentity(){
+    const n=(document.getElementById('id_name').value||'').trim();
+    if(!n){ document.getElementById('id_name').focus(); toast("A name is needed — it goes on every form you release"); return; }
+    ME={ name:n, unit:(document.getElementById('id_unit').value||'').trim() };
+    persistIdentity(); paintIdentity(); enterConsole();
+  }
+  function changeIdentity(){
+    document.getElementById('idback').style.display='none';
+    document.getElementById('idsetup').style.display='block';
+    const n=document.getElementById('id_name'); n.value=ME.name||''; 
+    document.getElementById('id_unit').value=ME.unit||''; n.focus();
+  }
+  function enterConsole(){ document.getElementById("login").style.display="none"; document.getElementById("console").style.display="block"; paintIdentity(); paintStat(); }
+
+  // ---- the header figure, measured rather than asserted -------------------------------
+  // It used to read a fixed "11h 20m saved this week". A number shown to a sponsor has to be
+  // something we actually counted, so this counts forms released in the last 7 days and says
+  // plainly that the hours are an estimate at the configured rate.
+  const MIN_PER_FORM = 40;
+  function bumpReleased(n){
+    try{ const k='dc_released', log=JSON.parse(localStorage.getItem(k)||'[]');
+      log.push({t:Date.now(), n}); const cut=Date.now()-90*864e5;
+      localStorage.setItem(k, JSON.stringify(log.filter(e=>e.t>cut)));
+    }catch(e){}
+    paintStat();
+  }
+  function paintStat(){
+    let forms=0;
+    try{ const log=JSON.parse(localStorage.getItem('dc_released')||'[]'), cut=Date.now()-7*864e5;
+      forms = log.filter(e=>e.t>cut).reduce((a,e)=>a+(e.n||0),0); }catch(e){}
+    const v=document.getElementById('statv'), l=document.getElementById('statl');
+    if(!v) return;
+    if(!forms){ v.textContent='—'; l.textContent='nothing released yet'; return; }
+    const m=forms*MIN_PER_FORM, h=Math.floor(m/60);
+    v.textContent = h ? `${h}h ${m%60}m` : `${m}m`;
+    l.textContent = `est. on ${forms} form${forms!==1?'s':''} this week`;
+  }
   function toggleDG(){ document.getElementById("dgsw").classList.toggle("on"); document.getElementById("dgfields").classList.toggle("show"); }
 
   // ---- trust layer: template freshness, named owner, verification + sign-off ----
@@ -561,7 +663,7 @@
     document.getElementById('vfProv').innerHTML=`<span class="dot ${f.dot}"></span> Template ${hesc(f.label)} ${hesc(fmtDate(f.date))} · owner: ${hesc(f.owner)}`+
       (f.state==='stale'?' <b style="color:var(--blocked)">— re-verify against the host\'s current form first</b>':'');
     document.getElementById('vfData').innerHTML=rows.map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('');
-    document.getElementById('vfBy').value=rv?rv.by:'MR Ronnie';
+    document.getElementById('vfBy').value = rv ? rv.by : (ME.name||'');
     document.getElementById('vfState').dataset.iso=iso;
     document.getElementById('vfDone').textContent=rv?`✓ Signed off by ${rv.by} · ${rv.at}`:'';
     document.getElementById('verifymodal').classList.add('show');
@@ -950,6 +1052,7 @@
       files.forEach((f,i)=> zip.file(f.name, new Uint8Array(bufs[i])));
       const {cs, dt} = nameStem();
       downloadBlob(zip.generate({type:'blob',mimeType:'application/zip'}), `DiploClear_${cs}_${dt}.zip`);
+      bumpReleased(files.length);
       toast(failed.length
         ? `${files.length} forms in one archive · ${failed.length} failed (${failed.join(', ')})`
         : `All ${files.length} forms saved as one archive`);
@@ -1033,13 +1136,15 @@
     AIRFIELDS=document.getElementById('set_air').value.split("\n").map(s=>s.trim()).filter(Boolean);
     PURPOSES=document.getElementById('set_pur').value.split("\n").map(s=>s.trim()).filter(Boolean);
     POC={name:document.getElementById('set_pocname').value.trim(), tel:document.getElementById('set_poctel').value.trim(), email:document.getElementById('set_pocemail').value.trim()};
+    ME={ name:(document.getElementById('set_myname').value||'').trim(), unit:(document.getElementById('set_myunit').value||'').trim() };
+    persistIdentity(); paintIdentity();
     try{ localStorage.setItem('dc_settings', JSON.stringify({fleet:FLEET,airfields:AIRFIELDS,purposes:PURPOSES,poc:POC})); }catch(e){}
     initFleet(); renderRefData(); closeSettings(); toast("Settings saved");
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); renderList(); initFleet(); renderRefData(); renderPresets();
-  if(/^#(console|demo|settings|verify)/.test(location.hash)){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
+  loadSettings(); loadIdentity(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat();
+  if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>
 </html>
