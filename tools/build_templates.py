@@ -14,6 +14,38 @@ SRC = "/Users/xynkro/Documents/1. CSC/Technopreneurial Mindset (TM)/TM Project/T
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOFFICE = "/Users/xynkro/.claude/skills/pptx/scripts/office/soffice.py"
 
+def scrub_docprops(path):
+    """Clear the Word/Excel authorship metadata.
+
+    The scrub has always covered body text, but every .docx also carries docProps: the
+    creator, the last person to save it, their company. Twelve of these templates were
+    stamped "Ronnie, SO2 DPCS, AOCG" as last-modified-by, and that travelled with the file
+    to twelve host nations on every request. Nobody reads it, which is exactly why it
+    survived. Returns the fields it cleared."""
+    import zipfile, shutil, tempfile, re as _re
+    FIELDS = ["dc:creator", "cp:lastModifiedBy", "Company", "Manager", "dc:description",
+              "cp:category", "cp:keywords", "dc:subject", "cp:lastPrinted"]
+    cleared = []
+    zin = zipfile.ZipFile(path)
+    items = {n: zin.read(n) for n in zin.namelist()}
+    zin.close()
+    for name in ("docProps/core.xml", "docProps/app.xml"):
+        if name not in items: continue
+        x = items[name].decode("utf-8", "replace")
+        for tag in FIELDS:
+            pat = _re.compile(r"<%s(\s[^>]*)?>([^<]*)</%s>" % (_re.escape(tag), _re.escape(tag)))
+            m = pat.search(x)
+            if m and m.group(2).strip():
+                cleared.append(f"{tag.split(':')[-1]}={m.group(2).strip()[:28]}")
+                x = pat.sub(lambda mm: f"<{tag}{mm.group(1) or ''}></{tag}>", x)
+        items[name] = x.encode("utf-8")
+    tmp = tempfile.mktemp(suffix=".zip")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for n, data in items.items(): zout.writestr(n, data)
+    shutil.move(tmp, path)
+    return cleared
+
+
 def stamp_cache_busters():
     """Rewrite the ?v= on each <script src="lib/..."> to that file's content hash.
     A planner who already has the app open holds a cached templates_data.js; without a
@@ -153,6 +185,7 @@ def build(cfg):
     cut = cut_after(d, cfg["cut_marker"]) if cfg.get("cut_marker") else 0
     outdir = os.path.join(ROOT, "Master Forms", cfg["country"]); os.makedirs(outdir, exist_ok=True)
     outpath = os.path.join(outdir, cfg["key"] + ".docx"); d.save(outpath)
+    meta = scrub_docprops(outpath)
     doc2 = docx.Document(outpath)
     txt = "\n".join(p.text for p in doc2.paragraphs)
     for tb in doc2.tables:
@@ -161,7 +194,8 @@ def build(cfg):
     tags = sorted(set(re.findall(r"\{(\w+)\}", txt)))
     leftover = [s for s in cfg.get("sentinels", []) if s in txt]
     flag = "  ⚠" if (leftover or misses) else ""
-    print(f"  {cfg['country']:12} legs_cut={cut:<3} tags={len(tags):<2} leftover={leftover or '-'}{(' MISS='+str(misses)) if misses else ''}{flag}")
+    print(f"  {cfg['country']:12} legs_cut={cut:<3} tags={len(tags):<2} leftover={leftover or '-'}"
+          f"{' meta_cleared=' + str(len(meta)) if meta else ''}{(' MISS='+str(misses)) if misses else ''}{flag}")
     return cfg["key"], outpath
 
 # Shared EU DIC form (Greece/Spain/Italy share one template; the data lives in TABLE 2,
@@ -341,6 +375,7 @@ def build_france():
         ws[coord] = ph
     outdir = os.path.join(ROOT, "Master Forms", "France"); os.makedirs(outdir, exist_ok=True)
     out = os.path.join(outdir, "france.xlsx"); wb.save(out)
+    scrub_docprops(out)
     print(f"  France       xlsx cells set={len(cells)}  -> {os.path.relpath(out, ROOT)}")
     return "france", out
 
@@ -412,6 +447,7 @@ if __name__ == "__main__":
     built += build_pdfs()
     built += build_xfa()
     keys = {"indonesia": os.path.join(ROOT, "Master Forms", "Indonesia", "indonesia.docx")}
+    scrub_docprops(keys["indonesia"])          # bundled directly, so it misses build()'s scrub
     for k, path in built: keys[k] = path
     lines = ["window.TEMPLATES=window.TEMPLATES||{};"]
     for k, path in keys.items():

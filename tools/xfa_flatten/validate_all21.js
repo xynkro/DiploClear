@@ -70,6 +70,34 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: no template may name a person in its document metadata ----------------
+// Body text was always scrubbed; docProps never was. Twelve templates carried
+// "Ronnie, SO2 DPCS, AOCG" as last-modified-by, which travelled to twelve host nations on
+// every request. Nobody opens File > Properties, which is why it survived the audits.
+(() => {
+  const TAGS=["dc:creator","cp:lastModifiedBy","Company","Manager"];
+  const named=[];
+  for(const k of Object.keys(TEMPLATES)){
+    const b=Buffer.from(TEMPLATES[k],"base64");
+    if(b.slice(0,2).toString()!=="PK") continue;          // PDFs carry no docProps
+    let z; try{ z=new PizZip(b); }catch(e){ continue; }
+    for(const fn of ["docProps/core.xml","docProps/app.xml"]){
+      const f=z.file(fn); if(!f) continue;
+      const x=f.asText();
+      for(const tag of TAGS){
+        const m=x.match(new RegExp("<"+tag+"[^>]*>([^<]+)</"+tag+">"));
+        if(m && m[1].trim()) named.push(`${k}:${tag.split(":").pop()}=${m[1].trim()}`);
+      }
+    }
+  }
+  console.log(`\nNO-AUTHOR-METADATA  office templates scanned=${Object.keys(TEMPLATES).length}  naming a person=${named.length}`);
+  console.log(named.length ? "==> NO-AUTHOR-METADATA FAILED\n    - " + named.join("\n    - ")
+                           : "==> NO-AUTHOR-METADATA OK — no creator, editor or company left in any template");
+  const ctl = '<dc:creator>Ronnie, SO2 DPCS, AOCG</dc:creator>'.match(/<dc:creator[^>]*>([^<]+)<\/dc:creator>/);
+  console.log(ctl && ctl[1].trim() ? "    control: a named creator IS caught"
+                                   : "    !! CONTROL FAILED — the scan is blind");
+})();
+
 // ---- invariant: no template may ship another mission's dates or times -----------------
 // Four templates used to carry the sample sortie's itinerary as static text: India told India
 // we were flying Riyadh-Singapore on 10 MAR, Thailand printed a fixed 08/2300Z Apr 26 table,

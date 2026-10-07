@@ -84,9 +84,17 @@ def main():
 
     # GATE: no sample word may survive anywhere in the flattened file
     txt = subprocess.run(["pdftotext", DST, "-"], capture_output=True, text=True).stdout
-    bad = [w for w in ["SINGA 9650", "SINGA9650", "SKYTRAIN", "RONNIE", "WHENUAPAI",
-                       "WOODBOURNE", "CHRISTCHURCH", "RICHMOND", "REDACTED_NAME", "PLANSHUB",
-                       "REDACTED_PHONE", "LUNBI", "TESAT", "PLUGA", "AKAVI"] if w in txt]
+    # The token list lives in xfa_flatten/leakwords.local.txt, which is gitignored: it names a
+    # person and carries a phone number lifted from the master, so the guard must not be
+    # published alongside the pipeline it guards.
+    words_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xfa_flatten", "leakwords.local.txt")
+    if not os.path.exists(words_file):
+        sys.exit("!! leakwords.local.txt missing — refusing to pass a scrub that was never checked")
+    with open(words_file, encoding="utf-8") as fh:
+        words = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+    if not words:
+        sys.exit("!! leakwords.local.txt is empty — refusing to pass an unchecked scrub")
+    bad = [w for w in words if w in txt]
     if bad:
         sys.exit("!! sample data still extractable: %s" % bad)
     print("  text-layer gate: clean (no sample values extractable)")
