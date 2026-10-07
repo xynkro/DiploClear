@@ -14,6 +14,28 @@ SRC = "/Users/xynkro/Documents/1. CSC/Technopreneurial Mindset (TM)/TM Project/T
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOFFICE = "/Users/xynkro/.claude/skills/pptx/scripts/office/soffice.py"
 
+def stamp_cache_busters():
+    """Rewrite the ?v= on each <script src="lib/..."> to that file's content hash.
+    A planner who already has the app open holds a cached templates_data.js; without a
+    changing URL a rebuilt template never reaches them and they keep filing the old one."""
+    import hashlib
+    idx_path = os.path.join(ROOT, "index.html")
+    html = open(idx_path, encoding="utf-8").read()
+    changed = []
+    for lib in ("pizzip.js", "docxtemplater.js", "pdf-lib.js", "templates_data.js"):
+        fp = os.path.join(ROOT, "lib", lib)
+        if not os.path.exists(fp): continue
+        h = hashlib.sha1(open(fp, "rb").read()).hexdigest()[:10]
+        new = f'<script src="lib/{lib}?v={h}"></script>'
+        pat = re.compile(r'<script src="lib/' + re.escape(lib) + r'(?:\?v=[0-9a-f]+)?"></script>')
+        if not pat.search(html):
+            print(f"  !! cache-buster: no script tag for {lib}"); continue
+        if pat.search(html).group(0) != new: changed.append(lib)
+        html = pat.sub(new, html, count=1)
+    open(idx_path, "w", encoding="utf-8").write(html)
+    print(f"  cache-busters stamped{' (updated: ' + ', '.join(changed) + ')' if changed else ' (unchanged)'}")
+
+
 def repl(p, old, new, misses, tag):
     for r in p.runs:
         if old in r.text:
@@ -156,7 +178,12 @@ CONFIGS = [
      (11,"SINGA 8613","{callsign}"),(12,"761 (ALT: 760, 762, 763, 764, 765 Or As Per Flt Plan)","{tails}"),
      (14,"Air to Air Refueling Flight -EFTD (Thai) 26-2","{purpose}"),(15,"MAJ Michelle Teo","{captain}"),
      (16,"10","{crew_n}"),(16,"Nil","{pax}"),(17,"FAK & Baggage","{cargo}"),(18,"Nil","{mil_equip}")],
-   sentinels=["SINGA 8613","Michelle Teo"]),
+   tcells=[
+           # itinerary times: rows 1-3 from the entered legs, return rows cleared
+           (0,"08 / 2300Z Apr 26","{p1_etd}"),(0,"09 / 0001Z Apr 26","{p2_eta}"),
+           (0,"09 / 0200Z Apr 26","{p3_eta}"),(0,"09 / 0400Z Apr 26","{p3_etd}"),
+           (0,"09 / 0600Z Apr 26",""),(0,"09 / 0700Z Apr 26",""),],
+   sentinels=["SINGA 8613","Michelle Teo","2300Z","0001Z","0200Z","0400Z","0600Z","0700Z","Apr 26"]),
 
  dict(country="Vietnam", key="vietnam", src="VIETNAM_sanitized.doc", cut_marker="117-15(2)",
    repls=[(0,"117-15(1)","{dcr_no}"),(1,"03 AUG 15","{dtd}"),(6,"02 SEP 15","{date}"),(8,"1 x F-50","{aircraft}"),
@@ -174,7 +201,11 @@ CONFIGS = [
      (23,"LTA JOSHUA LIM WEE CHONG","{captain}"),(25,"STORES / BAGGAGE / EXPLOSIVE CL:","{cargo}"),
      (30,"NIL","{photo}"),(34,"NIL","{services}"),(36,"72 HOURS.","{validity}")],
    setps=[(20,"{sector}"),(21,"{route}")], clears=[11,15,26],
-   sentinels=["SINGA 9635","JOSHUA LIM"]),
+   tcells=[
+           # itinerary times from the entered legs
+           (0,"07 APR - 2300 UTC","{p1_etd}"),(0,"07 APR - 2305 UTC","{p2_eta}"),
+           (0,"07 APR - 2335 UTC","{p2_etd}"),(0,"08 APR - 0300 UTC","{p3_eta}"),],
+   sentinels=["SINGA 9635","JOSHUA LIM","2300 UTC","2305 UTC","2335 UTC","0300 UTC","07 APR"]),
 
  dict(country="Cambodia", key="cambodia", src="CAMBODIA_sanitized.doc", cut_marker="DCR 117-15 (2)",
    repls=[(0,"117-15 (1)","{dcr_no}"),(1,"03 AUG 15","{dtd}"),(5,"1 x F-50","{aircraft}"),
@@ -236,10 +267,16 @@ CONFIGS = [
    tset=[(4,"WSSS","{pax}")],
    sentinels=["SINGA 80","DRESDEN","16 MAR 20"]),
 
+ # Egypt prints airspace entry/exit with their own times. Those were the sample ferry
+ # flight's (SALUN 1405Z, IMRAD 1555Z on 12 MAR 26) and shipped on every request.
  dict(country="Egypt", key="egypt", src="EGYPT_sanitized.docx",
    repls=[(9,"760","{reg}"),(10,"12 MAR 2026","{date}"),(12,"A330 MRTT","{type}"),(13,"SINGA 23","{callsign}"),
-          (19,"CHANGI AIRBASE","{dest}"),(20,"BARAJAS AIRPORT","{dep}"),(32,"RSAF FERRY FLIGHT","{purpose}")],
-   sentinels=["SINGA 23","BARAJAS","RSAF FERRY"]),
+          (19,"CHANGI AIRBASE","{dest}"),(20,"BARAJAS AIRPORT","{dep}"),(32,"RSAF FERRY FLIGHT","{purpose}"),
+          (18,"SALUN","{fir_entry}"),(18,"1405Z","{fir_entry_t}"),(18,"12 MAR 2026","{date}"),
+          (19,"0130Z","{eta}"),(19,"13 MAR 2026","{date}"),
+          (20,"1100Z","{etd}"),(20,"12 MAR 2026","{date}"),
+          (21,"IMRAD","{fir_exit}"),(21,"1555Z","{fir_exit_t}"),(21,"12 MAR 2026","{date}")],
+   sentinels=["SINGA 23","BARAJAS","RSAF FERRY","SALUN","IMRAD","1405Z","1555Z","0130Z","1100Z","MAR 2026"]),
 
  dict(country="Oman", key="oman", src="OMAN_sanitized_sanitized.docx", del_tables=[1,2,3],
    tcol=[(0,"Aircraft Type",2,"{type}"),(0,"Registration:",2,"{tails}"),(0,"Call sign",2,"{callsign}"),
@@ -249,6 +286,10 @@ CONFIGS = [
    sentinels=["SINGA 14","CHEN JIANWEI","ABDULAZIZ"]),
 
  # India = multi-table Indian "Application for Non-Scheduled Flights" (APPLICATION FORM paragraphs + tables)
+ # India's form is a round trip: T0/T5-row-1 = outbound, T2/T5-row-2 = return. Until an
+ # inbound leg is entered the return side is BLANKED rather than left carrying the sample
+ # mission's Riyadh routing — the form used to tell India we were flying OERK-WSSS on 10 MAR
+ # whatever the real sortie was. A blank the planner completes beats a confident wrong answer.
  dict(country="India", key="india", src="DCR 060-26 (INDIA).doc (SINGA 12 )_sanitized.doc",
    repls=[(68,"A330 MRTT","{type}"),(69,"SINGA 12","{callsign}"),
           (70,"764 (ALT : 760, 761, 762, 763, 765 Or As per flt plan)","{tails}"),
@@ -256,8 +297,33 @@ CONFIGS = [
           (87,"HADR STORES, BAGGAGE & FLY AWAY KIT","{cargo}")],
    tcells=[(0,"Repatriation Flight","{purpose}"),(0,"A330 MRTT","{type}"),(0,"LTC LEE TAT WEE","{captain}"),
            (2,"Repatriation Flight","{purpose}"),(2,"A330 MRTT","{type}"),(2,"LTC LEE TAT WEE","{captain}"),
-           (5,"09 MAR 25","{date}")],
-   sentinels=["HADR STORES","LEE TAT WEE","Repatriation Flight"]),
+           (5,"09 MAR 25","{date}"),
+           # --- outbound: real itinerary ---
+           (0,"CHANGI \u2013 KING KHALED INT\u2019L","{sector}"),
+           (0,"WSSS DCT SJ DCT SALAX N563 REXOD L883 KITUB Y517 TOTEB DCT OERK","{route}"),
+           (0,"Entry Point: MEMAK @ 0030Z","Entry Point: {fir_entry} @ {fir_entry_t}"),
+           (0,"Exit Point:    KITAL    @ 0515Z","Exit Point: {fir_exit} @ {fir_exit_t}"),
+           (0,"ETD: WSSS - 09 MAR 26 @ 2300Z","ETD: {dep} - {etd_full}"),
+           (0,"ETA: OERK  - 10 MAR 26 @ 0800Z","ETA: {dest} - {eta_full}"),
+           (1,"Date: 06 MAR 26","Date: {date}"),
+           (3,"Date: 06 MAR 26","Date: {date}"),
+           # --- return leg: cleared, not inherited ---
+           (2,"KING KHALED INT\u2019L AIRPORT - CHANGI",""),
+           (2,"OERK DCT TOTEB DCT NAGBU Y214 RAPMA DCT DAPOL L692 GISKA DCT UMILA L883 REXOD N563 SALAX A576 SJ DCT WSSS",""),
+           (2,"Entry Point: REXOD @  1245Z","Entry Point:"),
+           (2,"Exit Point:   MEMAK @  1730Z","Exit Point:"),
+           (2,"ETD: OERK  - 10 MAR 26 @  1100Z","ETD:"),
+           (2,"ETA: WSSS  - 10 MAR 26 @  1900Z","ETA:"),
+           # --- summary table: row 1 outbound, row 2 return ---
+           (5,"2300Z","{etd}"),(5,"0800Z","{eta}"),
+           (5,"Entry Point: MEMAK @ 0030Z","Entry Point: {fir_entry} @ {fir_entry_t}"),
+           (5,"REXOD @ 0515Z","{fir_exit} @ {fir_exit_t}"),
+           (5,"10 MAR 26",""),(5,"1100Z",""),(5,"1900Z",""),
+           (5,"Entry Point: REXOD @ 1245Z","Entry Point:"),(5,"MEMAK @ 1730Z",""),
+           (5,"OERK DCT TOTEB DCT NAGBU Y214 RAPMA DCT DAPOL L692 GISKA DCT UMILA L883 REXOD N563 SALAX A576  SJ DCT WSSS",""),
+           (5,"OERK","")],
+   sentinels=["HADR STORES","LEE TAT WEE","Repatriation Flight",
+              "MEMAK","KITAL","REXOD","OERK","0030Z","0515Z","1245Z","1730Z","MAR 26","MAR 25"]),
 ]
 
 def build_france():
@@ -352,3 +418,4 @@ if __name__ == "__main__":
         lines.append(f'window.TEMPLATES.{k}="{base64.b64encode(open(path,"rb").read()).decode()}";')
     open(os.path.join(ROOT, "lib", "templates_data.js"), "w").write("\n".join(lines) + "\n")
     print(f"\nBundled {len(keys)} templates -> lib/templates_data.js: {list(keys)}")
+    stamp_cache_busters()

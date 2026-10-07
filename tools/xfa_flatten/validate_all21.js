@@ -70,6 +70,34 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: no template may ship another mission's dates or times -----------------
+// Four templates used to carry the sample sortie's itinerary as static text: India told India
+// we were flying Riyadh-Singapore on 10 MAR, Thailand printed a fixed 08/2300Z Apr 26 table,
+// Malaysia 07 APR, Egypt entry SALUN 1405Z. They were filed on every request regardless of the
+// real mission. Dates and times must come from the entered itinerary, never from the template.
+(() => {
+  const DOCX={IDN:'indonesia',THA:'thailand',VNM:'vietnam',MYS:'malaysia',KHM:'cambodia',MMR:'myanmar',
+              SAU:'saudi',TWN:'taiwan',GRC:'greece',ESP:'spain',ITA:'italy',DEU:'germany',
+              EGY:'egypt',OMN:'oman',IND:'india'};
+  const RX=/\b\d{1,2}\s?\d?\s*\/?\s*\d{0,2}\s*(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b|\b\d{2}\s?\d{2}\s*(UTC|Z)\b/gi;
+  const bad=[];
+  for(const [iso,k] of Object.entries(DOCX)){
+    const z=new PizZip(TEMPLATES[k],{base64:true}); let x='';
+    (z.file(/word\/(document|header\d*|footer\d*)\.xml/)||[]).forEach(f=>x+=f.asText());
+    const t=x.replace(/<[^>]+>/g,'').replace(/\s+/g,' ');
+    const hits=[...new Set((t.match(RX)||[]).map(h=>h.trim()))];
+    if(hits.length) bad.push(`${iso}: ${hits.join(', ')}`);
+  }
+  console.log(`\nNO-BAKED-DATES  templates scanned=${Object.keys(DOCX).length}  carrying sample dates/times=${bad.length}`);
+  console.log(bad.length ? "==> NO-BAKED-DATES FAILED\n    - " + bad.join("\n    - ")
+                         : "==> NO-BAKED-DATES OK — every date and time comes from the entered itinerary");
+  // positive control: a template that really does carry one must be caught
+  const ctl = "<w:t>Entry Point: REXOD @ 1245Z</w:t><w:t> on 10 MAR 26</w:t>".replace(/<[^>]+>/g,' ');
+  const got = [...new Set((ctl.match(RX)||[]).map(h=>h.trim()))];
+  console.log(got.length>=2 ? `    control: a baked itinerary IS caught (${got.join(', ')})`
+                            : `    !! CONTROL FAILED — the scan is blind (matched ${got.length})`);
+})();
+
 // ---- invariant: strip, sign-off and emitted file must describe ONE frozen mission ----
 // Regression guard for the late-edit bug: generating with SINGA 12, signing off, then
 // changing the callsign used to emit a HERON 99 document from a strip still badged

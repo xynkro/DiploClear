@@ -271,6 +271,23 @@
   .vfsign label{font-size:12px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:6px}
   .vfsign input{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0 11px;font-size:14px}
   .vfsign input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
+  .sub2{text-transform:none;letter-spacing:0;color:var(--ink-faint);font-weight:400;font-size:10.5px;margin-left:5px}
+  .itin{margin-top:15px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
+  .itin-hd{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .itin-hd .t{font-size:12.5px;font-weight:650;color:var(--ink)}
+  .itin-hd .addrow{margin-left:auto;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);
+    border-radius:7px;height:27px;padding:0 10px;font-size:12px;font-weight:600;cursor:pointer}
+  .itin-hd .addrow:hover{border-color:var(--ink-faint);color:var(--ink)}
+  .itin-grid-hd,.legrow{display:grid;grid-template-columns:1.5fr 1fr 62px 62px 1.05fr 1.05fr 26px;gap:6px;align-items:center;padding:5px 12px}
+  .itin-grid-hd{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);padding-top:8px;padding-bottom:3px}
+  .legrow input{height:31px;border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:0 8px;
+    font-family:var(--mono);font-size:12px;color:var(--ink);width:100%}
+  .legrow input:focus{outline:none;border-color:var(--navy)}
+  .legrow .calc{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .legrow .calc.roll{color:var(--amber);font-weight:600}
+  .legrow .rm{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:5px}
+  .legrow .rm:hover{color:var(--blocked);background:var(--panel)}
+  .itin-ft{padding:8px 12px 10px;font-size:11.5px;color:var(--ink-faint);border-top:1px solid var(--line);font-family:var(--mono)}
   .vfdone{font-size:12.5px;color:var(--cleared);margin-top:9px;font-weight:600}
   .field label .hint{text-transform:none;letter-spacing:0;color:var(--ink-faint);font-weight:400;margin-left:6px;font-size:10.5px}
   .idwho{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--paper)}
@@ -367,6 +384,23 @@
             <div class="f"><label>Date</label><input id="f_date" value="08 APR 26"></div>
             <div class="f"><label>Purpose</label><select id="f_purpose"><option>Exercise deployment</option><option>Air recovery</option><option>HADR response</option><option>Training</option><option>VIP</option></select></div>
             <div class="f wide"><label>Route (ATS)</label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
+            <div class="f"><label>Off blocks (UTC) <span class="sub2">HHMM</span></label><input id="f_etd" value="2300" maxlength="4" inputmode="numeric" placeholder="2300"></div>
+            <div class="f"><label>Ground speed <span class="sub2">kt — used when a leg is given in nm</span></label><input id="f_gs" value="440" inputmode="numeric" placeholder="440"></div>
+          </div>
+
+          <!-- Itinerary. Thailand, Malaysia, Egypt and India all print an entry/exit table with
+               times; until this existed those tables shipped a previous mission's figures. Times
+               run forward from off-blocks and roll the date over on their own, which is also what
+               makes an overnight sector come out right. -->
+          <div class="itin">
+            <div class="itin-hd">
+              <span class="t">Itinerary &amp; FIR crossings</span>
+              <span class="sub2" id="itinsum"></span>
+              <button type="button" class="addrow" onclick="addLeg()">+ Add crossing</button>
+            </div>
+            <div class="itin-grid-hd"><span>Point</span><span>FIR / ICAO</span><span>Leg</span><span>Ground</span><span>ETA</span><span>ETD</span><span></span></div>
+            <div id="legrows"></div>
+            <div class="itin-ft" id="itinft"></div>
           </div>
           <div class="toggle"><span class="switch" id="dgsw" onclick="toggleDG()"></span><span>Carrying dangerous goods <span style="color:var(--ink-faint)">— adds UN number, class, weight</span></span></div>
           <div id="dgfields">
@@ -478,10 +512,13 @@
 <div class="toast" id="toast"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></span><span id="toastmsg"></span></div>
 
 <!-- offline document engine (bundled — no network) -->
-<script src="lib/pizzip.js"></script>
-<script src="lib/docxtemplater.js"></script>
-<script src="lib/pdf-lib.js"></script>
-<script src="lib/templates_data.js"></script>
+<!-- ?v= is the file's own content hash, written by tools/build_templates.py. Without it a
+     returning planner keeps a cached templates_data.js and goes on filing forms from the
+     previous bundle, which is how a fixed template fails to reach the person using it. -->
+<script src="lib/pizzip.js?v=b13c9aac12"></script>
+<script src="lib/docxtemplater.js?v=95978e1c11"></script>
+<script src="lib/pdf-lib.js?v=f560defe4b"></script>
+<script src="lib/templates_data.js?v=d01a371de2"></script>
 <script>
   const COUNTRIES = [
     {nm:"Indonesia",    iso:"IDN", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v3"},
@@ -780,6 +817,86 @@
   // ---- real document generation (Indonesia DCR — offline via docxtemplater) ----
   const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   function fld(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+  // ---- itinerary: points, leg times, and the clock that runs through them ----------------
+  // Every leg is minutes. A leg given in nautical miles is converted at the entered ground
+  // speed; a leg given as a plain number is taken as minutes. The running clock rolls the
+  // date forward on its own, so a sector that crosses midnight prints the next day's date
+  // without anyone working it out by hand.
+  let LEGS = [
+    {pt:"CHANGI",      fir:"WSSS",  leg:"",      gnd:"",  rem:"Departure"},
+    {pt:"TIDAR",       fir:"WMFC",  leg:"35",    gnd:"",  rem:"Enter KL FIR"},
+    {pt:"UDON THANI",  fir:"VTUD",  leg:"145",   gnd:"",  rem:"Destination"},
+  ];
+  const pad2 = n => String(n).padStart(2,'0');
+  function legMinutes(raw, gs){
+    const t = String(raw||'').trim(); if(!t) return 0;
+    const m = t.match(/^([\d.]+)\s*(nm|NM)$/);          // "420nm" -> time at ground speed
+    if(m){ const kt = parseFloat(gs)||0; return kt>0 ? Math.round(parseFloat(m[1])/kt*60) : 0; }
+    const n = parseFloat(t.replace(/[^\d.]/g,'')); return isFinite(n) ? Math.round(n) : 0;
+  }
+  // Walks the legs once and returns each point's ETA/ETD as real Date objects, so a rollover
+  // is arithmetic rather than a string the planner has to notice.
+  function itinerary(){
+    const d0 = parseDMY(fld('f_date'));                   // mission date, 00:00 UTC
+    const hhmm = (fld('f_etd')||'').replace(/\D/g,'').padStart(4,'0');
+    let clock = new Date(d0.getTime());
+    clock.setUTCHours(parseInt(hhmm.slice(0,2))||0, parseInt(hhmm.slice(2,4))||0, 0, 0);
+    const gs = fld('f_gs'), out = [];
+    LEGS.forEach((L,i) => {
+      let eta = null;
+      if(i > 0){ clock = new Date(clock.getTime() + legMinutes(L.leg, gs)*60000); eta = new Date(clock.getTime()); }
+      const g = legMinutes(L.gnd, gs);
+      let etd = null;
+      const last = i === LEGS.length-1;
+      // A point only has an ETD if something departs from it: the origin always, and a stop
+      // where the aircraft spends time on the ground. An overflight crossing gets an ETA and
+      // a dash, which is how the host tables themselves are laid out.
+      if(!last){ if(g) clock = new Date(clock.getTime() + g*60000); if(i === 0 || g) etd = new Date(clock.getTime()); }
+      out.push({ ...L, eta, etd, rolled: !!(eta && eta.getUTCDate() !== d0.getUTCDate()) });
+    });
+    return out;
+  }
+  function parseDMY(str){                                  // "08 APR 26" -> Date (UTC midnight)
+    const m = String(str||'').trim().match(/^(\d{1,2})\s*([A-Z]{3})\s*(\d{2,4})$/i);
+    const now = new Date();
+    if(!m) return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const mi = MON.indexOf(m[2].toUpperCase());
+    let y = parseInt(m[3]); if(y < 100) y += 2000;
+    return new Date(Date.UTC(y, mi < 0 ? now.getUTCMonth() : mi, parseInt(m[1])));
+  }
+  const zTime = d => d ? `${pad2(d.getUTCDate())} / ${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}Z ${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}` : '-';
+  const zShort = d => d ? `${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}Z` : '-';
+
+  // Narrow columns, so the cell shows the Zulu time with a day offset when it has rolled
+  // (0035Z +1). The full "DD / HHMMZ MMM YY" stays in the tooltip and in the forms.
+  const dayOff = (d, d0) => d ? Math.round((Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()) - d0.getTime())/864e5) : 0;
+  const zCell = (d, d0) => { const n = dayOff(d, d0); return zShort(d) + (n ? ` +${n}` : ''); };
+  function renderLegs(){
+    const rows = itinerary();
+    const d0 = parseDMY(fld('f_date'));
+    document.getElementById('legrows').innerHTML = rows.map((r,i) => `
+      <div class="legrow">
+        <input value="${hesc(r.pt)}"  oninput="setLeg(${i},'pt',this.value)"  placeholder="Point">
+        <input value="${hesc(r.fir)}" oninput="setLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">
+        <input value="${hesc(r.leg)}" oninput="setLeg(${i},'leg',this.value)" placeholder="${i?'min':'—'}" ${i?'':'disabled'} title="Minutes, or nm with a unit e.g. 420nm">
+        <input value="${hesc(r.gnd)}" oninput="setLeg(${i},'gnd',this.value)" placeholder="${i===rows.length-1?'—':'min'}" ${i===rows.length-1?'disabled':''} title="Minutes on the ground">
+        <span class="calc ${r.rolled?'roll':''}" title="${r.eta?hesc(zTime(r.eta)):''}">${r.eta?hesc(zCell(r.eta,d0)):'—'}</span>
+        <span class="calc ${dayOff(r.etd,d0)?'roll':''}" title="${r.etd?hesc(zTime(r.etd)):''}">${r.etd?hesc(zCell(r.etd,d0)):'—'}</span>
+        <button type="button" class="rm" onclick="rmLeg(${i})" title="Remove" aria-label="Remove ${hesc(r.pt)}">×</button>
+      </div>`).join('');
+    const first = rows[0], last = rows[rows.length-1];
+    const total = (first && last && last.eta) ? Math.round((last.eta - (first.etd||first.eta))/60000) : 0;
+    document.getElementById('itinsum').textContent = `${rows.length} points`;
+    document.getElementById('itinft').textContent =
+      (first&&first.etd? `OFF ${zTime(first.etd)}` : '') +
+      (last&&last.eta ? `   ·   ON ${zTime(last.eta)}   ·   ${Math.floor(total/60)}h ${total%60}m` : '') +
+      (rows.some(r=>r.rolled) ? '   ·   crosses midnight — dates rolled' : '');
+    checkDrift();
+  }
+  function setLeg(i,k,v){ if(LEGS[i]){ LEGS[i][k]=v; renderLegs(); } }
+  function rmLeg(i){ if(LEGS.length>2){ LEGS.splice(i,1); renderLegs(); } else toast("An itinerary needs a departure and a destination"); }
+  function addLeg(){ LEGS.splice(LEGS.length-1, 0, {pt:"",fir:"",leg:"",gnd:"",rem:"Enter FIR"}); renderLegs(); }
+
   function buildData(){
     const placeName = s => s.replace(/\s*\(.*\)\s*$/,'').toUpperCase().trim();
     const from = placeName(fld('f_from')), to = placeName(fld('f_to'));
@@ -789,13 +906,33 @@
     const now = new Date();
     const dtd = `${String(now.getDate()).padStart(2,'0')} ${MON[now.getMonth()]} ${String(now.getFullYear()).slice(2)}`;
     const capt = fld('f_capt'), crewN = fld('f_crew')||'1', purpose = fld('f_purpose');
+    const itin = itinerary();
     return {
       dcr_no:"042-26 (1)", dtd, date: fld('f_date'),
       aircraft:`${fld('acnum')} x ${document.getElementById('actype').value}`, type: document.getElementById('actype').value,
       tails: alt.length ? `${prim} (ALT: ${alt.join(', ')})` : prim,
       callsign: `${fld('f_cs')} ${fld('f_csno')}`.trim(), reg: prim,
       sector: `${from} - ${to}`, route: fld('f_route'), dest: to,
-      time_note:"(ALL TIMES UTC)", etd: fld('f_date'), eta: fld('f_date'),
+      time_note:"(ALL TIMES UTC)",
+      // ETD/ETA are TIMES: the Indonesia template prints them in an AIRFIELD/ETA/ETD table
+      // and Greece asks for "DD MMM YY, HHMM Z", so a bare date was never right here.
+      etd: itin.length ? zShort(itin[0].etd) : '', eta: itin.length ? zShort(itin[itin.length-1].eta) : '',
+      etd_full: itin.length ? zTime(itin[0].etd) : '', eta_full: itin.length ? zTime(itin[itin.length-1].eta) : '',
+      itinerary: itin.map(r => `${r.pt}${r.fir?` (${r.fir})`:''}  ETA ${zTime(r.eta)}  ETD ${zTime(r.etd)}${r.rem?`  ${r.rem}`:''}`).join('\n'),
+      fir_entry: (itin.find(r=>/enter/i.test(r.rem))||{}).pt || '',
+      fir_entry_t: zShort((itin.find(r=>/enter/i.test(r.rem))||{}).eta),
+      fir_exit: (itin.find(r=>/exit/i.test(r.rem))||{}).pt || '',
+      fir_exit_t: zShort((itin.find(r=>/exit/i.test(r.rem))||{}).etd || (itin.find(r=>/exit/i.test(r.rem))||{}).eta),
+      legs: itin.map(r => ({ pt:r.pt, fir:r.fir, eta:zTime(r.eta), etd:zTime(r.etd), rem:r.rem||'' })),
+      // Host tables are fixed-row (Thailand prints five, Malaysia three), so the itinerary is
+      // also exposed positionally. A slot with no point behind it resolves to empty, which is
+      // what leaves an unused row blank instead of carrying a previous mission's figures.
+      ...Object.fromEntries(Array.from({length:6}, (_,i) => {
+        const r = itin[i] || {};
+        return [[`p${i+1}_pt`,  r.pt  || ''], [`p${i+1}_fir`, r.fir || ''],
+                [`p${i+1}_eta`, r.eta ? zTime(r.eta) : ''], [`p${i+1}_etd`, r.etd ? zTime(r.etd) : ''],
+                [`p${i+1}_etaz`, r.eta ? zShort(r.eta) : ''], [`p${i+1}_etdz`, r.etd ? zShort(r.etd) : '']];
+      }).flat()),
       purpose, in_support: purpose,
       captain: capt, crew_n: crewN,
       crew: `${capt} + ${Math.max(0,(parseInt(crewN)||1)-1)} CREW`,
@@ -832,7 +969,10 @@
   function checkDrift(){ if(!BATCH) return; markDrift(missionSig(buildData()) !== BATCH.sig); }
   // Tail numbers, dangerous goods and aircraft type change outside plain input events,
   // so poll as well as listen. Cheap: a string compare on a dozen fields.
-  document.addEventListener('input', checkDrift, true);
+  document.addEventListener('input', e => {
+    if(e.target && /^(f_date|f_etd|f_gs)$/.test(e.target.id)) renderLegs();
+    checkDrift();
+  }, true);
   document.addEventListener('change', checkDrift, true);
   setInterval(checkDrift, 700);
 
@@ -1078,6 +1218,7 @@
       cs:fld('f_cs'), csno:fld('f_csno'), capt:fld('f_capt'), crew:fld('f_crew'), pax:fld('f_pax'),
       from:document.getElementById('f_from').value, to:document.getElementById('f_to').value,
       date:fld('f_date'), purpose:document.getElementById('f_purpose').value, route:fld('f_route'),
+      etdt:fld('f_etd'), gs:fld('f_gs'), legs:JSON.parse(JSON.stringify(LEGS)),
       tails:selTails.slice(), dg:document.getElementById('dgsw').classList.contains('on') };
   }
   function applyForm(m){
@@ -1143,7 +1284,7 @@
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); loadIdentity(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat();
+  loadSettings(); loadIdentity(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
   if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>
