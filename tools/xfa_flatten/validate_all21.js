@@ -70,6 +70,44 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: bundled airfield positions must still be right -------------------------
+// Coordinates were transcribed by hand from SkyVector, so a digit can slip without anything
+// looking wrong — the itinerary would simply produce confident, wrong times. These check the
+// great-circle distances against figures SkyVector itself publishes for the same pairs.
+(() => {
+  const m = html.match(/const AIRFIELD_POS\s*=\s*\{([\s\S]*?)\};/);
+  const fails = [];
+  if(!m){ fails.push("AIRFIELD_POS table not found"); }
+  else {
+    const POS = {};
+    for(const line of m[1].split("\n")){
+      const mm = line.match(/(\w{4})\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/);
+      if(mm) POS[mm[1]] = [parseFloat(mm[2]), parseFloat(mm[3])];
+    }
+    const gcNm = (a,b) => { const R=3440.065, rad=Math.PI/180;
+      const dLat=(b[0]-a[0])*rad, dLon=(b[1]-a[1])*rad;
+      const h=Math.sin(dLat/2)**2 + Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.min(1,Math.sqrt(h))); };
+    // [from, to, expected nm, tolerance] — the short ones are SkyVector's own published
+    // bearing/distance figures, which makes them an independent check on the transcription.
+    const EXPECT = [["WSSS","WSAP",5.2,1],["WSSS","WSAT",17.0,1.5],["WSAP","WSAT",11.8,1.5],
+                    ["WSSS","YPDN",1800,60],["WSSS","VTUD",965,40],["WSSS","OERK",3600,90]];
+    for(const [a,b,exp,tol] of EXPECT){
+      if(!POS[a] || !POS[b]){ fails.push(`missing position for ${!POS[a]?a:b}`); continue; }
+      const got = gcNm(POS[a], POS[b]);
+      if(Math.abs(got-exp) > tol) fails.push(`${a}->${b}: ${got.toFixed(1)} nm, expected ~${exp} (+/-${tol})`);
+    }
+    console.log(`\nAIRFIELD-POSITIONS  airfields=${Object.keys(POS).length}  checks=${EXPECT.length}  off=${fails.length}`);
+    // control: a one-degree slip in a latitude must be caught
+    const bent = [POS.WSSS[0]+1, POS.WSSS[1]];
+    const drift = Math.abs(gcNm(bent, POS.WSAP) - 5.2);
+    console.log(drift > 1 ? "    control: a 1-degree transcription slip IS caught"
+                          : "    !! CONTROL FAILED — the tolerance is too loose to catch a bad digit");
+  }
+  console.log(fails.length ? "==> AIRFIELD-POSITIONS FAILED\n    - " + fails.join("\n    - ")
+                           : "==> AIRFIELD-POSITIONS OK — distances agree with SkyVector's own figures");
+})();
+
 // ---- invariant: Australia must ship as a LIVE form, filled, with nothing left over -----
 // Australia will not accept the flattened render. The AF179 has to stay an Adobe LiveCycle
 // form (/XFA + /NeedsRendering) with the mission written into its datasets packet. Three ways

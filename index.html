@@ -271,6 +271,15 @@
   .vfsign label{font-size:12px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:6px}
   .vfsign input{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0 11px;font-size:14px}
   .vfsign input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(22,62,92,.12)}
+  .crewtails{margin-top:13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
+  .ct-hd{padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:650;color:var(--ink)}
+  .ctrow{display:grid;grid-template-columns:78px 1fr;gap:8px;align-items:center;padding:5px 12px}
+  .ctrow .tl{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);background:var(--paper);
+    border:1px solid var(--line);border-radius:7px;height:31px;display:grid;place-items:center}
+  .ctrow input{height:31px;border:1px solid var(--line);border-radius:7px;background:var(--paper);
+    padding:0 9px;font-size:12.5px;color:var(--ink);width:100%}
+  .ctrow input:focus{outline:none;border-color:var(--navy)}
+  .ctrow:last-child{padding-bottom:10px}
   .sub2{text-transform:none;letter-spacing:0;color:var(--ink-faint);font-weight:400;font-size:10.5px;margin-left:5px}
   .itin{margin-top:15px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
   .itin-hd{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -283,6 +292,11 @@
   .legrow input{height:31px;border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:0 8px;
     font-family:var(--mono);font-size:12px;color:var(--ink);width:100%}
   .legrow input:focus{outline:none;border-color:var(--navy)}
+  /* a leg the app worked out itself, shown as a placeholder the planner can type over */
+  .legrow input.auto::placeholder{color:var(--blu);opacity:1;font-style:italic}
+  /* a leg with nothing entered and nothing derivable: it is contributing zero minutes */
+  .legrow input.unset{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 7%,var(--paper))}
+  .itin-ft.warn{color:var(--amber)}
   .legrow .calc{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .legrow .calc.roll{color:var(--amber);font-weight:600}
   .legrow .rm{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:5px}
@@ -376,7 +390,7 @@
             <div class="f"><label>Number</label><input id="acnum" type="number" value="1" min="1" max="12" onchange="capTails()"></div>
             <div class="f wide"><label>Tail numbers</label><button type="button" class="tailbtn" onclick="openTails()"><span class="mono" id="tailtxt">—</span><span class="cnt" id="tailcnt"></span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B95A1" stroke-width="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></button></div>
             <div class="f"><label>Callsign</label><div style="display:flex;gap:8px"><input id="f_cs" value="SINGA" style="flex:1"><input id="f_csno" value="12" style="width:64px" title="Callsign number" aria-label="Callsign number"></div></div>
-            <div class="f"><label>Captain</label><input id="f_capt" value="MAJ MICHELLE TEO"></div>
+            <div class="f"><label>Captain <span class="sub2" id="captlbl"></span></label><input id="f_capt" value="MAJ MICHELLE TEO"></div>
             <div class="f"><label>Crew</label><input id="f_crew" value="7"></div>
             <div class="f"><label>Pax</label><input id="f_pax" value="NIL"></div>
             <div class="f"><label>From</label><select id="f_from"><option>Changi (WSSS)</option><option>Paya Lebar (WSAP)</option><option>Tengah (WSAT)</option></select></div>
@@ -386,6 +400,15 @@
             <div class="f wide"><label>Route (ATS)</label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
             <div class="f"><label>Off blocks (UTC) <span class="sub2">HHMM</span></label><input id="f_etd" value="2300" maxlength="4" inputmode="numeric" placeholder="2300"></div>
             <div class="f"><label>Ground speed <span class="sub2">kt — used when a leg is given in nm</span></label><input id="f_gs" value="440" inputmode="numeric" placeholder="440"></div>
+          </div>
+
+          <!-- One request can cover several airframes, and they do not all fly with the same
+               captain. The host forms take a crew list, so each selected tail gets its own
+               commander here and they go onto the one form together. Hidden for a single
+               aircraft, which is the common case. -->
+          <div class="crewtails" id="crewtails" style="display:none">
+            <div class="ct-hd">Aircraft commanders <span class="sub2">one per airframe on this request</span></div>
+            <div id="ctrows"></div>
           </div>
 
           <!-- Itinerary. Thailand, Malaysia, Egypt and India all print an entry/exit table with
@@ -576,10 +599,28 @@
   function curTails(){ const t=document.getElementById("actype").value; const a=[...FLEET.frequent,...FLEET.rest].find(x=>x.type===t); return a?a.tails:[]; }
   function syncTails(){ selTails=selTails.filter(t=>curTails().includes(t)); if(!selTails.length&&curTails().length) selTails=[curTails()[0]]; paintTails(); }
   function capTails(){ const n=+document.getElementById("acnum").value; if(selTails.length>n) selTails=selTails.slice(0,n); paintTails(); }
+  // tail -> commander. Keyed by tail so changing the selection keeps the names already typed
+  // against the airframes that are still on the request.
+  let CAPTAINS = {};
+  function renderCrewTails(){
+    const box = document.getElementById('crewtails'), rows = document.getElementById('ctrows');
+    if(!box || !rows) return;
+    const multi = selTails.length > 1;
+    box.style.display = multi ? 'block' : 'none';
+    const lbl = document.getElementById('captlbl');
+    if(lbl) lbl.textContent = multi ? `— ${selTails[0]||'first airframe'}; the rest are below` : '';
+    if(!multi){ rows.innerHTML = ''; return; }
+    rows.innerHTML = selTails.map((t,i) => `
+      <div class="ctrow"><span class="tl">${hesc(t)}</span>
+        <input value="${hesc(i===0 ? fld('f_capt') : (CAPTAINS[t]||''))}" ${i===0?'disabled title="The first airframe uses the Captain field above"':''}
+               oninput="setCaptain('${hesc(t)}', this.value)" placeholder="e.g. MAJ Lim"></div>`).join('');
+  }
+  function setCaptain(tail, v){ CAPTAINS[tail] = v; checkDrift(); }
   function paintTails(){
     document.getElementById("tailtxt").textContent = selTails.length?selTails.join(", "):"—";
     document.getElementById("tailcnt").textContent = selTails.length?`${selTails.length} sel`:"";
     MISSION.tail = selTails.join(", "); MISSION.ac = document.getElementById("actype").value;
+    renderCrewTails();
   }
   function openTails(){
     document.getElementById("modaltype").textContent = document.getElementById("actype").value;
@@ -834,6 +875,31 @@
   // ---- real document generation (Indonesia DCR — offline via docxtemplater) ----
   const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   function fld(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+  // ---- airfield positions -----------------------------------------------------------------
+  // Decimal degrees, converted from SkyVector's published coordinates (skyvector.com), read
+  // 2026-10-08. Bundled rather than fetched: the app runs from file:// on a machine with no
+  // network, and "nothing leaves this machine" is the point of it. Refreshing this table means
+  // re-reading SkyVector and editing here, which is a deliberate, dated act.
+  const AIRFIELD_POS = {
+    WSSS: [  1.359167, 103.989333],   // Changi
+    WSAP: [  1.355667, 103.902833],   // Paya Lebar
+    WSAT: [  1.387667, 103.708333],   // Tengah
+    VTUD: [ 17.386500, 102.788167],   // Udon Thani
+    OERK: [ 24.962833,  46.708000],   // Riyadh King Khaled
+    YPDN: [-12.414667, 130.876667],   // Darwin
+  };
+  // Great-circle distance in nautical miles. Haversine is plenty here: a clearance wants the
+  // leg to the nearest few minutes, not a flight-planning answer, and the difference from a
+  // proper geodesic over these distances is well under that.
+  function gcNm(a, b){
+    const R = 3440.065, rad = Math.PI/180;
+    const dLat = (b[0]-a[0])*rad, dLon = (b[1]-a[1])*rad;
+    const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  // A point resolves to a position if its FIR/ICAO cell names an airfield we hold.
+  function posOf(leg){ const k=(leg.fir||'').trim().toUpperCase(); return AIRFIELD_POS[k]||null; }
+
   // ---- itinerary: points, leg times, and the clock that runs through them ----------------
   // Every leg is minutes. A leg given in nautical miles is converted at the entered ground
   // speed; a leg given as a plain number is taken as minutes. The running clock rolls the
@@ -860,8 +926,18 @@
     clock.setUTCHours(parseInt(hhmm.slice(0,2))||0, parseInt(hhmm.slice(2,4))||0, 0, 0);
     const gs = fld('f_gs'), out = [];
     LEGS.forEach((L,i) => {
-      let eta = null;
-      if(i > 0){ clock = new Date(clock.getTime() + legMinutes(L.leg, gs)*60000); eta = new Date(clock.getTime()); }
+      let eta = null, autoNm = 0;
+      // If no leg time was entered and both ends of the leg are airfields we hold a position
+      // for, derive it from the distance at the entered ground speed. Typing a value overrides
+      // this — the planner's own figure always wins, because they know the winds and we do not.
+      if(i > 0 && !String(L.leg||'').trim()){
+        const a = posOf(LEGS[i-1]), b = posOf(L);
+        if(a && b){ autoNm = gcNm(a, b); }
+      }
+      const mins = String(L.leg||'').trim()
+        ? legMinutes(L.leg, gs)
+        : (autoNm && (parseFloat(gs)||0) > 0 ? Math.round(autoNm/(parseFloat(gs))*60) : 0);
+      if(i > 0){ clock = new Date(clock.getTime() + mins*60000); eta = new Date(clock.getTime()); }
       const g = legMinutes(L.gnd, gs);
       let etd = null;
       const last = i === LEGS.length-1;
@@ -869,7 +945,12 @@
       // where the aircraft spends time on the ground. An overflight crossing gets an ETA and
       // a dash, which is how the host tables themselves are laid out.
       if(!last){ if(g) clock = new Date(clock.getTime() + g*60000); if(i === 0 || g) etd = new Date(clock.getTime()); }
-      out.push({ ...L, eta, etd, rolled: !!(eta && eta.getUTCDate() !== d0.getUTCDate()) });
+      // A leg with no entered time and nothing to derive one from contributes zero minutes,
+      // which would quietly give this point the same ETA as the one before it. Flag it rather
+      // than let a silent zero reach a host nation's form.
+      const unset = i > 0 && !String(L.leg||'').trim() && !autoNm;
+      out.push({ ...L, eta, etd, autoNm, autoMin: autoNm ? mins : 0, unset,
+                 rolled: !!(eta && eta.getUTCDate() !== d0.getUTCDate()) });
     });
     return out;
   }
@@ -895,7 +976,10 @@
       <div class="legrow">
         <input value="${hesc(r.pt)}"  oninput="setLeg(${i},'pt',this.value)"  placeholder="Point">
         <input value="${hesc(r.fir)}" oninput="setLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">
-        <input value="${hesc(r.leg)}" oninput="setLeg(${i},'leg',this.value)" placeholder="${i?'min':'—'}" ${i?'':'disabled'} title="Minutes, or nm with a unit e.g. 420nm">
+        <input value="${hesc(r.leg)}" oninput="setLeg(${i},'leg',this.value)"
+               placeholder="${i ? (r.autoMin ? r.autoMin+'' : 'min') : '—'}" ${i?'':'disabled'}
+               class="${r.unset ? 'unset' : (r.autoMin && !String(r.leg||'').trim() ? 'auto' : '')}"
+               title="${r.autoNm ? 'From '+Math.round(r.autoNm)+' nm between these two airfields at the entered ground speed — type a value to override' : 'Minutes, or nm with a unit e.g. 420nm'}">
         <input value="${hesc(r.gnd)}" oninput="setLeg(${i},'gnd',this.value)" placeholder="${i===rows.length-1?'—':'min'}" ${i===rows.length-1?'disabled':''} title="Minutes on the ground">
         <span class="calc ${r.rolled?'roll':''}" title="${r.eta?hesc(zTime(r.eta)):''}">${r.eta?hesc(zCell(r.eta,d0)):'—'}</span>
         <span class="calc ${dayOff(r.etd,d0)?'roll':''}" title="${r.etd?hesc(zTime(r.etd)):''}">${r.etd?hesc(zCell(r.etd,d0)):'—'}</span>
@@ -904,10 +988,17 @@
     const first = rows[0], last = rows[rows.length-1];
     const total = (first && last && last.eta) ? Math.round((last.eta - (first.etd||first.eta))/60000) : 0;
     document.getElementById('itinsum').textContent = `${rows.length} points`;
-    document.getElementById('itinft').textContent =
+    const a = posOf(rows[0]||{}), b = posOf(last||{});
+    const direct = (a && b) ? gcNm(a, b) : 0;
+    const unset = rows.filter(r=>r.unset);
+    const ft = document.getElementById('itinft');
+    ft.textContent =
       (first&&first.etd? `OFF ${zTime(first.etd)}` : '') +
       (last&&last.eta ? `   ·   ON ${zTime(last.eta)}   ·   ${Math.floor(total/60)}h ${total%60}m` : '') +
+      (direct ? `   ·   ${Math.round(direct)} nm direct` : '') +
       (rows.some(r=>r.rolled) ? '   ·   crosses midnight — dates rolled' : '');
+    ft.classList.toggle('warn', unset.length > 0);
+    if(unset.length) ft.textContent += `   ·   no leg time for ${unset.map(r=>r.pt||'a point').join(', ')} — counted as zero`;
     checkDrift();
   }
   function setLeg(i,k,v){ if(LEGS[i]){ LEGS[i][k]=v; renderLegs(); } }
@@ -924,6 +1015,9 @@
     const dtd = `${String(now.getDate()).padStart(2,'0')} ${MON[now.getMonth()]} ${String(now.getFullYear()).slice(2)}`;
     const capt = fld('f_capt'), crewN = fld('f_crew')||'1', purpose = fld('f_purpose');
     const itin = itinerary();
+    const crewList = selTails.length > 1
+      ? selTails.map((t,i) => `${t} — ${(i===0 ? capt : (CAPTAINS[t]||'')) || 'TBC'}`).join('; ')
+      : capt;
     return {
       dcr_no:"042-26 (1)", dtd, date: fld('f_date'),
       aircraft:`${fld('acnum')} x ${document.getElementById('actype').value}`, type: document.getElementById('actype').value,
@@ -956,7 +1050,13 @@
                 [`p${i+1}_etaz`, r.eta ? zShort(r.eta) : ''], [`p${i+1}_etdz`, r.etd ? zShort(r.etd) : '']];
       }).flat()),
       purpose, in_support: purpose,
-      captain: capt, crew_n: crewN,
+      // One request can cover several airframes, and a form that lists three tails but one
+      // commander is wrong. {captain} therefore carries every commander once more than one
+      // aircraft is on the request; with a single aircraft it is just the name, so nothing
+      // changes for the common case. cap_* stay the first airframe's, because the AF179 splits
+      // a commander across title/given/family in a per-row table we fill one row of.
+      captain: crewList, crew_n: crewN,
+      captains: crewList,
       crew: `${capt} + ${Math.max(0,(parseInt(crewN)||1)-1)} CREW`,
       pax: fld('f_pax')||'NIL',
       cargo, mil_equip:"NIL", photo:"NIL", services:"NIL", validity:"72 HOURS",
@@ -993,6 +1093,7 @@
   // so poll as well as listen. Cheap: a string compare on a dozen fields.
   document.addEventListener('input', e => {
     if(e.target && /^(f_date|f_etd|f_gs)$/.test(e.target.id)) renderLegs();
+    if(e.target && e.target.id === 'f_capt') renderCrewTails();
     checkDrift();
   }, true);
   document.addEventListener('change', checkDrift, true);
