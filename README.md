@@ -27,13 +27,44 @@ format. DiploClear captures the mission **once** and fills all 21 in their nativ
 
 **21 / 21 generating** — verified end to end by `tools/xfa_flatten/validate_all21.js`.
 
+### Itinerary, legs and the clock
+Step 1 takes off-blocks in UTC, a ground speed, and a row per point with its leg and ground
+time. Times run forward and roll the date themselves, so a sector crossing midnight prints
+the next day. A leg is minutes, or nautical miles with the unit; left blank, it is derived
+from the great-circle distance where both ends are airfields we hold a position for
+(bundled from **SkyVector**, read 2026-10-08 — the app never calls out). A leg with neither
+is flagged amber rather than counted as a silent zero.
+
+An **overnight is two clearances**, so the return leg has its own panel — its own date,
+off-blocks, captain and crew — and Generate produces both, foldered `OUTBOUND/` and
+`INBOUND/` in the archive. Sign-offs are keyed per leg.
+
+Several airframes on one request each get their own commander, and the crew list carries all
+of them, because a form naming three tails and one captain is wrong.
+
 ### Hard rule: one frozen mission per batch
 **Generate** freezes the flight. The strips, the verify table a planner signs, every
 filename and all four engines read that freeze, so a strip, its sign-off and the document
 it emits are the same mission by construction. Editing the flight afterwards does not
 silently re-point a generated batch: a banner says the forms are behind and offers
 *Regenerate*, which rebuilds and clears the sign-offs. `validate_all21.js` fails the build
-if any engine reads a live input field again.
+if any engine reads a live input field again. The rule holds **per leg**: each clearance
+freezes its own data and carries its own sign-off.
+
+### Australia ships live, not flattened
+Australia will not accept a flattened render of the AF179, so we send their own Adobe
+LiveCycle form with the mission written into its XFA `datasets` packet. `/XFA`, `/AcroForm`
+and `/NeedsRendering` are left intact, which means it opens in Adobe Reader and nowhere else
+— every other viewer shows *"Please wait…"*, and that is the form being whole, not broken.
+The packet must stay uncompressed for the runtime substitution to be safe; the engine refuses
+outright if it is not plain XML.
+
+### Gates
+`node tools/xfa_flatten/validate_all21.js` runs six, each with a positive control so a blind
+check cannot pass: 21-of-21 generation, ARCHIVE, FROZEN-MISSION, NO-BAKED-DATES (no template
+may carry another mission's dates or times), NO-AUTHOR-METADATA (docProps must name nobody),
+AUSTRALIA-LIVE-XFA, and AIRFIELD-POSITIONS (distances checked against SkyVector's own
+published figures).
 
 ### Hard rule: format-in = format-out
 The host gives a `.docx`, they get a `.docx` back. The master template **is** the host
