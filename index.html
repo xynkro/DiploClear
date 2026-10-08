@@ -313,6 +313,36 @@
   .sethr{height:1px;background:var(--line);margin:15px 0 3px}
   .who{cursor:pointer}
   .who:hover{opacity:.78}
+  /* ---- narrow screens -------------------------------------------------------------------
+     A planner checking a request on a phone at the aircraft should get something readable,
+     not a desktop console with its right-hand column off the edge. Two-column field grids go
+     to one, and the itinerary stops being a seven-column table and becomes a card per point
+     with its times on their own line. */
+  @media (max-width:720px){
+    .wrap{padding:14px 12px}
+    .topbar{height:auto;min-height:54px;padding:8px 12px;gap:10px;flex-wrap:wrap}
+    .topbar .stat{display:none}                     /* the saved-time figure is not why you opened this on a phone */
+    .topbar .who{max-width:46vw;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .fgrid{grid-template-columns:1fr;gap:11px}
+    #dgfields.show{grid-template-columns:1fr}
+    .setrow,.setrow3{grid-template-columns:1fr;gap:10px}
+    .modal{padding:10px}
+    .modal .box,.modal .box.wide{width:100%;max-height:92vh}
+    .pvbody iframe{min-height:52vh}
+
+    /* itinerary: one card per point */
+    .itin-grid-hd{display:none}
+    .legrow{grid-template-columns:1fr 1fr;gap:7px;padding:9px 11px;border-bottom:1px solid var(--line);
+      position:relative;padding-right:34px}
+    .legrow:last-child{border-bottom:0}
+    .legrow input:nth-child(1){grid-column:1 / -1}
+    .legrow .calc{grid-column:span 1;padding:3px 0}
+    .legrow .calc::before{content:attr(data-lbl);display:block;font-size:9.5px;letter-spacing:.04em;
+      text-transform:uppercase;color:var(--ink-faint);font-family:var(--sans)}
+    .legrow .rm{position:absolute;right:8px;top:9px}
+    .itin-hd{flex-wrap:wrap}
+    .ctrow{grid-template-columns:62px 1fr}
+  }
 </style>
 </head>
 <body>
@@ -981,8 +1011,8 @@
                class="${r.unset ? 'unset' : (r.autoMin && !String(r.leg||'').trim() ? 'auto' : '')}"
                title="${r.autoNm ? 'From '+Math.round(r.autoNm)+' nm between these two airfields at the entered ground speed — type a value to override' : 'Minutes, or nm with a unit e.g. 420nm'}">
         <input value="${hesc(r.gnd)}" oninput="setLeg(${i},'gnd',this.value)" placeholder="${i===rows.length-1?'—':'min'}" ${i===rows.length-1?'disabled':''} title="Minutes on the ground">
-        <span class="calc ${r.rolled?'roll':''}" title="${r.eta?hesc(zTime(r.eta)):''}">${r.eta?hesc(zCell(r.eta,d0)):'—'}</span>
-        <span class="calc ${dayOff(r.etd,d0)?'roll':''}" title="${r.etd?hesc(zTime(r.etd)):''}">${r.etd?hesc(zCell(r.etd,d0)):'—'}</span>
+        <span data-lbl="ETA" class="calc ${r.rolled?'roll':''}" title="${r.eta?hesc(zTime(r.eta)):''}">${r.eta?hesc(zCell(r.eta,d0)):'—'}</span>
+        <span data-lbl="ETD" class="calc ${dayOff(r.etd,d0)?'roll':''}" title="${r.etd?hesc(zTime(r.etd)):''}">${r.etd?hesc(zCell(r.etd,d0)):'—'}</span>
         <button type="button" class="rm" onclick="rmLeg(${i})" title="Remove" aria-label="Remove ${hesc(r.pt)}">×</button>
       </div>`).join('');
     const first = rows[0], last = rows[rows.length-1];
