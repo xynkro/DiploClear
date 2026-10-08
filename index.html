@@ -518,7 +518,7 @@
 <script src="lib/pizzip.js?v=b13c9aac12"></script>
 <script src="lib/docxtemplater.js?v=95978e1c11"></script>
 <script src="lib/pdf-lib.js?v=f560defe4b"></script>
-<script src="lib/templates_data.js?v=a27813fe78"></script>
+<script src="lib/templates_data.js?v=964ac10f20"></script>
 <script>
   const COUNTRIES = [
     {nm:"Indonesia",    iso:"IDN", fmt:"DOCX", lead:"7 days", ok:true,  on:true,  v:"v3"},
@@ -740,7 +740,24 @@
     _pv = { blob:captured.blob, name:captured.name, url:null };
     document.getElementById('pvName').textContent = captured.name;
     const isPdf = /\.pdf$/i.test(captured.name);
-    if(isPdf){
+    // A live XFA form renders only in Adobe. Every browser viewer shows "Please wait…", so
+    // previewing one inline would look like a broken file rather than a correct one.
+    const head = new TextDecoder('latin1').decode(new Uint8Array(await captured.blob.slice(0, 200000).arrayBuffer()));
+    const isLiveXfa = isPdf && /\/NeedsRendering\s*true/.test(head);
+    if(isLiveXfa){
+      const d = activeData();
+      body.innerHTML = `<div class="pvoffice">
+        <div class="why"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span>This is Australia's own AF179, filled and still live. It opens in Adobe Reader and
+        nowhere else — every other viewer, this one included, shows "Please wait…". That is the
+        form being intact, not broken, and it is why we send it rather than a flattened picture
+        of it. These are the values written into it.</span></div>
+        <table><tbody>${[['Callsign',d.callsign],['Aircraft',d.aircraft],['Registration',d.reg],
+          ['Captain',d.captain],['Crew',d.crew_n],['Pax',d.pax],['Purpose',d.purpose],
+          ['Off blocks',d.etd_full],['Airspace entry',`${d.fir_entry||'—'} ${d.fir_entry_t||''}`.trim()],
+          ['Destination',d.dest]].map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.getElementById('pvNote').textContent = `${Math.round(captured.blob.size/1024)} KB · live Adobe form · opens in Adobe Reader`;
+    } else if(isPdf){
       // The browser's own PDF viewer renders the exact bytes — faithful by construction.
       _pv.url = URL.createObjectURL(captured.blob);
       body.innerHTML = `<iframe title="${hesc(nm)} clearance form preview" src="${_pv.url}#toolbar=1&navpanes=0"></iframe>`;
@@ -923,6 +940,11 @@
       fir_entry_t: zShort((itin.find(r=>/enter/i.test(r.rem))||{}).eta),
       fir_exit: (itin.find(r=>/exit/i.test(r.rem))||{}).pt || '',
       fir_exit_t: zShort((itin.find(r=>/exit/i.test(r.rem))||{}).etd || (itin.find(r=>/exit/i.test(r.rem))||{}).eta),
+      // AF179 splits the captain across title / given / family name and keeps alternates separate
+      cap_title: (capt.match(/^(ME[0-9]|MAJ|LTC|CPT|COL|MR|MS|MRS|SLTC|BG)\b/i)||[''])[0],
+      cap_given: capt.replace(/^(ME[0-9]|MAJ|LTC|CPT|COL|MR|MS|MRS|SLTC|BG)\b\s*/i,'').split(/\s+/)[0] || '',
+      cap_last:  capt.replace(/^(ME[0-9]|MAJ|LTC|CPT|COL|MR|MS|MRS|SLTC|BG)\b\s*/i,'').split(/\s+/).slice(1).join(' ') || '',
+      alt_rego:  alt.join(', '),
       legs: itin.map(r => ({ pt:r.pt, fir:r.fir, eta:zTime(r.eta), etd:zTime(r.etd), rem:r.rem||'' })),
       // Host tables are fixed-row (Thailand prints five, Malaysia three), so the itinerary is
       // also exposed positionally. A slot with no point behind it resolves to empty, which is
@@ -1127,6 +1149,55 @@
     downloadBlob(new Blob([out],{type:'application/pdf'}), `${nm}_${cs}_${dt}_${v}.pdf`);
     toast(`${nm} clearance generated — check downloads`);
   }
+  // ---- Australia: fill the LIVE XFA form, do not flatten it -----------------------------
+  // Australia will not accept the flattened render — they want their own AF179, which is an
+  // Adobe LiveCycle form whose data lives in an XFA "datasets" packet rather than in page
+  // content. patch_tpl.py ships that packet scrubbed and seeded with [[markers]]; this swaps
+  // the markers for the mission and writes the stream back. /XFA, /AcroForm and
+  // /NeedsRendering are left alone, so what comes out is still their form, still live, and
+  // still opens in Adobe Reader as something a person can check and sign.
+  const AXFA = { AUS:'australia_xfa' };
+  function xfaEscape(v){ return String(v==null?'':v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  async function generateXfa(key, nm, v){
+    const PDFLib = window.PDFLib;
+    if(!PDFLib || !window.TEMPLATES || !window.TEMPLATES[key]){ toast("XFA engine not loaded"); return; }
+    const { PDFDocument, PDFName, PDFRawStream } = PDFLib;
+    const bytes = b64bytes(window.TEMPLATES[key]);
+    const pdf = await PDFDocument.load(bytes, {ignoreEncryption:true, throwOnInvalidObject:false});
+    const ctx = pdf.context;
+    const acro = ctx.lookup(pdf.catalog.get(PDFName.of('AcroForm')));
+    const xfa  = acro && ctx.lookup(acro.get(PDFName.of('XFA')));
+    if(!xfa){ throw new Error('AF179 template has no XFA packet'); }
+    let dsRef = null;
+    for(let i=0;i<xfa.size();i+=2) if(String(xfa.get(i))==='(datasets)') dsRef = xfa.get(i+1);
+    if(!dsRef){ throw new Error('AF179 template has no datasets packet'); }
+    const strm = ctx.lookup(dsRef);
+    // The packet ships uncompressed (patch_tpl.py saves with compress_streams=False), so this
+    // is a plain text substitution. Refuse rather than guess if that ever stops being true:
+    // decoding deflate bytes as UTF-8 destroys the packet silently and Adobe then cannot open
+    // the form at all, which is worse than not producing one.
+    let xml = new TextDecoder('utf-8').decode(strm.getContents());
+    if(!/^\s*<xfa:datasets/.test(xml)){
+      throw new Error('AF179 datasets packet is not plain XML — rebuild the template with tools/xfa_flatten/patch_tpl.py');
+    }
+    const d = activeData();
+    const unresolved = [];
+    xml = xml.replace(/\[\[(\w+)\]\]/g, (m, k) => {
+      if(!(k in d)){ unresolved.push(k); return ''; }
+      return xfaEscape(d[k]);
+    });
+    if(unresolved.length) console.warn('AF179 markers with no mission field:', [...new Set(unresolved)]);
+    const outBytes = new TextEncoder().encode(xml);
+    const newStrm = PDFRawStream.of(strm.dict, outBytes);
+    newStrm.dict.set(PDFName.of('Length'), ctx.obj(outBytes.length));
+    ctx.assign(dsRef, newStrm);
+    const out = await pdf.save({useObjectStreams:false});
+    const {cs, dt} = nameStem();
+    downloadBlob(new Blob([out],{type:'application/pdf'}), `${nm}_${cs}_${dt}_${v}.pdf`);
+    toast(`${nm} AF179 generated — opens in Adobe Reader`);
+  }
+
   // Australia & Canada ship from Adobe LiveCycle as XFA forms that render only in Adobe
   // ("Please wait…" everywhere else). We pre-flatten them offline to normal PDFs
   // (tools/xfa_flatten, pdf.js): Australia -> 6-page A4 blank filled via PDFMAP.australia
@@ -1146,6 +1217,8 @@
     try{
       if(dkey && window.TEMPLATES && window.TEMPLATES[dkey]) return Promise.resolve(generateDoc(dkey, nm, v));
       if(xkey && window.TEMPLATES && window.TEMPLATES[xkey]) return Promise.resolve(generateXlsx(xkey, nm, v));
+      const akey=AXFA[iso];
+      if(akey && window.TEMPLATES && window.TEMPLATES[akey]) return generateXfa(akey, nm, v);
       if(pkey && window.TEMPLATES && window.TEMPLATES[pkey]) return generatePdf(pkey, nm, v);
       if(bkey && window.TEMPLATES && window.TEMPLATES[bkey]) return Promise.resolve(downloadFlatBlank(bkey, nm));
       return Promise.reject(new Error(`${nm} is ${fmt} — ${fmt} engine is next`));

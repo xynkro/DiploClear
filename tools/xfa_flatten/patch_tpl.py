@@ -43,6 +43,41 @@ KEEP_EXACT = {
 # turn these baked sample values into overlay markers
 TO_MARKER = {("fldCrewDetails", "15"): "crew_n", ("fldPAXNo", "00"): "pax"}
 
+# AF179 fields DiploClear fills, as (tag, which occurrence) -> marker. Written only into a
+# field the scrub emptied, so a column label such as <fldETA>ORIGINATE</fldETA> that the
+# whitelist deliberately kept is never overwritten. These make the LIVE XFA form fillable:
+# Australia will not take the flattened render, so the values have to go into the form's own
+# datasets packet and the form has to stay a form.
+SET_MARKERS = [
+    ("fldPurpose", 0, "purpose"),      ("fldCallSign", 0, "callsign"),
+    ("fldCapTitle", 0, "cap_title"),   ("fldCapLastName", 0, "cap_last"),
+    ("fldCapGivenName", 0, "cap_given"),
+    ("fldACRego", 0, "reg"),           ("fldACType", 0, "type"),
+    ("fldACCallsign", 0, "callsign"),  ("fldACAltRego", 0, "alt_rego"),
+    ("fldLPD", 0, "dep"),              ("fldLPETD", 0, "etd_full"),
+    ("fldAAEP", 0, "fir_entry"),       ("fldAAETA", 0, "fir_entry_t"),
+    ("fldPlace", 0, "p1_pt"), ("fldETA", 0, "p1_eta"), ("fldETD", 0, "p1_etd"),
+    ("fldPlace", 1, "p2_pt"), ("fldETA", 1, "p2_eta"), ("fldETD", 1, "p2_etd"),
+    ("fldPlace", 2, "p3_pt"), ("fldETA", 2, "p3_eta"), ("fldETD", 2, "p3_etd"),
+]
+
+
+def apply_markers(root):
+    """Write [[markers]] into the AF179 fields DiploClear fills. Runs AFTER the scrub and
+    only into fields the scrub emptied, so nothing the whitelist kept is clobbered."""
+    want = {}
+    for tag, occ, marker in SET_MARKERS: want.setdefault(tag, {})[occ] = marker
+    seen, placed, skipped = {}, [], []
+    for el, tag in leaf_elements(root):
+        if tag not in want: continue
+        i = seen.get(tag, 0); seen[tag] = i + 1
+        marker = want[tag].get(i)
+        if marker is None: continue
+        if value_of(el).strip():
+            skipped.append((tag, i, value_of(el)[:24])); continue   # whitelist kept it
+        set_value(el, "[[%s]]" % marker); placed.append((tag, i, marker))
+    return placed, skipped
+
 
 def leaf_elements(root):
     """Yield elements whose content is a plain value (incl. xhtml rich text)."""
@@ -95,6 +130,10 @@ def scrub(datasets_bytes):
         if tag in KEEP_TAGS_STRUCT or (tag, val) in KEEP_EXACT:
             kept.append((tag, val)); continue
         set_value(el, ""); cleared.append((tag, val[:60]))
+    placed, skipped = apply_markers(root)
+    marked += [(t, "(emptied)", "[[%s]]" % m) for t, _, m in placed]
+    for t, i, v in skipped:
+        print("  !! marker for <%s>#%d skipped — field still holds %r" % (t, i, v))
     return etree.tostring(root, encoding="utf-8", xml_declaration=False), kept, cleared, marked
 
 
@@ -122,8 +161,12 @@ def main(src="australia.pdf", dst="australia_patched.pdf"):
     xfa[idx["template"]].write(t.encode("latin1"))
 
     out, kept, cleared, marked = scrub(bytes(xfa[idx["datasets"]].read_bytes()))
+    # Write the datasets packet UNCOMPRESSED and keep it that way through save(). The runtime
+    # injector swaps [[markers]] for the mission with a plain text substitution; if pikepdf
+    # recompresses this stream the browser reads deflate bytes as UTF-8, silently destroys the
+    # packet, and Adobe gets a form it cannot open.
     xfa[idx["datasets"]].write(out)
-    pdf.save(dst); pdf.close()
+    pdf.save(dst, compress_streams=False); pdf.close()
 
     print("\n  MARKED (baked value -> overlay marker):")
     for tag, v, m in marked: print("    <%s> %r -> %s" % (tag, v, m))

@@ -447,6 +447,11 @@ if __name__ == "__main__":
     built += build_pdfs()
     built += build_xfa()
     keys = {"indonesia": os.path.join(ROOT, "Master Forms", "Indonesia", "indonesia.docx")}
+    # Australia's LIVE XFA form, scrubbed and markered by xfa_flatten/patch_tpl.py. Australia
+    # will not accept the flattened render, so this ships alongside it and the runtime injects
+    # values into its datasets packet, leaving /XFA and /NeedsRendering intact.
+    aus_xfa = os.path.join(ROOT, "Master Forms", "Australia", "australia_xfa.pdf")
+    if os.path.exists(aus_xfa): keys["australia_xfa"] = aus_xfa
     scrub_docprops(keys["indonesia"])          # bundled directly, so it misses build()'s scrub
     for k, path in built: keys[k] = path
     lines = ["window.TEMPLATES=window.TEMPLATES||{};"]

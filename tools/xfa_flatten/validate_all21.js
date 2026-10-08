@@ -70,6 +70,49 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: Australia must ship as a LIVE form, filled, with nothing left over -----
+// Australia will not accept the flattened render. The AF179 has to stay an Adobe LiveCycle
+// form (/XFA + /NeedsRendering) with the mission written into its datasets packet. Three ways
+// that silently breaks: the packet gets recompressed (the runtime then decodes deflate as
+// UTF-8 and destroys it), a marker has no mission field behind it, or the scrub stops running
+// and the sample sortie rides along.
+(() => {
+  const fails = [];
+  const b64 = TEMPLATES["australia_xfa"];
+  if(!b64){ fails.push("australia_xfa template is not bundled"); }
+  else {
+    const buf = Buffer.from(b64, "base64");
+    const raw = buf.toString("latin1");
+    if(!/\/NeedsRendering\s*true/.test(raw)) fails.push("template lost /NeedsRendering — Adobe will not treat it as a form");
+    if(!/\/AcroForm/.test(raw))               fails.push("template lost /AcroForm");
+    // the datasets packet must still be plain XML, or the runtime substitution corrupts it
+    const i = raw.indexOf("<xfa:datasets");
+    if(i < 0) fails.push("datasets packet is not plain XML in the bundle — patch_tpl.py must save with compress_streams=False");
+    else {
+      const seg = raw.slice(i, raw.indexOf("</xfa:datasets>", i) + 15);
+      const markers = [...new Set([...seg.matchAll(/\[\[(\w+)\]\]/g)].map(m => m[1]))];
+      if(!markers.length) fails.push("datasets packet carries no [[markers]] — nothing would be filled");
+      // every marker must have a field behind it in buildData()
+      const bd = html.slice(html.indexOf("function buildData()"), html.indexOf("\n  }", html.indexOf("function buildData()")));
+      const positional = /p\$\{i\+1\}_|p\${i\+1}_/.test(bd) || /`p\$\{i \+ 1\}_/.test(bd) || bd.includes("p${i+1}_pt");
+      const orphan = markers.filter(m => {
+        if(/^p[1-6]_(pt|fir|eta|etd|etaz|etdz)$/.test(m)) return !positional;
+        // buildData uses both "name: value" and ES6 shorthand "name,", so accept either
+        return !new RegExp("(^|[\\s{,])" + m + "\\s*[:,]").test(bd);
+      });
+      if(orphan.length) fails.push("markers with no mission field: " + orphan.join(", "));
+      console.log(`\nAUSTRALIA-LIVE-XFA  markers=${markers.length}  orphans=${orphan.length}${orphan.length? ' ('+orphan.join(', ')+')':''}`);
+      // control: a marker that genuinely has no field behind it must be caught
+      const bogus = "definitely_not_a_mission_field";
+      const caught = !new RegExp("(^|[\\s{,])" + bogus + "\\s*[:,]").test(bd);
+      console.log(caught ? "    control: a marker with no mission field IS caught"
+                         : "    !! CONTROL FAILED — orphan detection is blind");
+    }
+  }
+  console.log(fails.length ? "==> AUSTRALIA-LIVE-XFA FAILED\n    - " + fails.join("\n    - ")
+                           : "==> AUSTRALIA-LIVE-XFA OK — live form, plain datasets, every marker backed by a field");
+})();
+
 // ---- invariant: no template may name a person in its document metadata ----------------
 // Body text was always scrubbed; docProps never was. Twelve templates carried
 // "Ronnie, SO2 DPCS, AOCG" as last-modified-by, which travelled to twelve host nations on
