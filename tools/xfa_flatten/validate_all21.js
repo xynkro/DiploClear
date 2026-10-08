@@ -131,7 +131,9 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
       const markers = [...new Set([...seg.matchAll(/\[\[(\w+)\]\]/g)].map(m => m[1]))];
       if(!markers.length) fails.push("datasets packet carries no [[markers]] — nothing would be filled");
       // every marker must have a field behind it in buildData()
-      const bd = html.slice(html.indexOf("function buildData()"), html.indexOf("\n  }", html.indexOf("function buildData()")));
+      const bdStart = html.indexOf("function buildData(");
+      const bdEnd = html.indexOf("\n  function ", bdStart + 10);
+      const bd = html.slice(bdStart, bdEnd > 0 ? bdEnd : bdStart + 6000);
       const positional = /p\$\{i\+1\}_|p\${i\+1}_/.test(bd) || /`p\$\{i \+ 1\}_/.test(bd) || bd.includes("p${i+1}_pt");
       const orphan = markers.filter(m => {
         if(/^p[1-6]_(pt|fir|eta|etd|etaz|etdz)$/.test(m)) return !positional;
@@ -231,11 +233,23 @@ function frozenMissionCheck(src){
     if(/buildData\(\)/.test(body))      fails.push("openPreview() rebuilds the mission from live inputs");
     if(!/activeData\(\)/.test(body))    fails.push("openPreview() office table does not read the freeze");
   }
+  // An overnight is two clearances. They must stay separate end to end: their own frozen
+  // data, their own sign-off key, their own folder in the archive. A leg index that failed to
+  // reach any one of those would quietly hand the host the other leg's form.
+  for(const [re, what] of [
+      [/let CURLEG\s*=/,                      "CURLEG (which clearance the engines build)"],
+      [/BATCH\.legs\[CURLEG\]\.data/,          "activeData() reading the current leg"],
+      [/legs\.push\(\{\s*name:'INBOUND'/,      "generate() freezing the return leg"],
+      [/REVIEWED\[li\s*\+\s*'-'\s*\+\s*iso\]/, "sign-off keyed per leg"],
+      [/legName\(li\)\s*\+\s*'\/'/,          "archive foldered per leg"],
+      [/function liveSig\(/,                  "drift signature covering both legs"]])
+    if(!re.test(html)) fails.push(`return leg: missing ${what}`);
+
   // openVerify shows the operator what they are putting their name to: must be the freeze
   if(!/const d=activeData\(\), f=freshness/.test(src)) fails.push("verify modal still reads live fields");
   for(const [re,what] of [[/let BATCH\s*=/,"BATCH freeze"],[/function activeData\(/,"activeData()"],
                           [/function missionSig\(/,"missionSig()"],[/function checkDrift\(/,"checkDrift()"],
-                          [/BATCH\s*=\s*\{\s*data:d/,"generate() stores the freeze"]])
+                          [/BATCH\s*=\s*\{\s*legs\s*,/,"generate() stores the freeze"]])
     if(!re.test(src)) fails.push(`missing ${what}`);
   return fails;
 }

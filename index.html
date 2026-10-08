@@ -154,6 +154,11 @@
   .strips-hd .dlall:disabled{opacity:.6}
   .strips-hd .dlall:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
   /* stale-batch warning: amber, sits directly above the strips it is talking about */
+  .leghd{display:flex;align-items:center;gap:10px;margin:16px 2px 9px;font-size:12.5px;color:var(--ink-soft)}
+  .leghd:first-child{margin-top:2px}
+  .leghd .tag{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#fff;
+    background:var(--navy);border-radius:5px;padding:3px 8px}
+  .leghd .dt{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
   .drift{display:flex;align-items:center;gap:10px;margin:0 2px 12px;padding:11px 14px;border-radius:11px;
     border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 11%,var(--paper));
     color:var(--ink);font-size:13.5px;line-height:1.4}
@@ -455,6 +460,25 @@
             <div id="legrows"></div>
             <div class="itin-ft" id="itinft"></div>
           </div>
+          <!-- An overnight sortie is two clearances, not one: the host clears the way out and the
+               way back separately. Turning this on builds a second set of forms from the return
+               leg, which can carry its own date, crew and commander. -->
+          <div class="toggle"><span class="switch" id="rtsw" onclick="toggleReturn()"></span><span>Return leg
+            <span style="color:var(--ink-faint)">— an overnight needs its own clearance each way</span></span></div>
+          <div class="itin" id="retpanel" style="display:none;margin-top:11px">
+            <div class="itin-hd"><span class="t">Return leg</span><span class="sub2" id="retsum"></span>
+              <button type="button" class="addrow" onclick="addRetLeg()">+ Add crossing</button></div>
+            <div class="fgrid" style="padding:10px 12px 4px">
+              <div class="f"><label>Date</label><input id="r_date" placeholder="e.g. 11 APR 26"></div>
+              <div class="f"><label>Off blocks (UTC)</label><input id="r_etd" maxlength="4" inputmode="numeric" placeholder="0600"></div>
+              <div class="f"><label>Captain <span class="sub2">if different</span></label><input id="r_capt" placeholder="same as outbound"></div>
+              <div class="f"><label>Crew <span class="sub2">if different</span></label><input id="r_crew" placeholder="same as outbound"></div>
+            </div>
+            <div class="itin-grid-hd"><span>Point</span><span>FIR / ICAO</span><span>Leg</span><span>Ground</span><span>ETA</span><span>ETD</span><span></span></div>
+            <div id="retrows"></div>
+            <div class="itin-ft" id="retft"></div>
+          </div>
+
           <div class="toggle"><span class="switch" id="dgsw" onclick="toggleDG()"></span><span>Carrying dangerous goods <span style="color:var(--ink-faint)">— adds UN number, class, weight</span></span></div>
           <div id="dgfields">
             <div class="f"><label>UN number</label><input id="f_un" placeholder="UN 0000"></div>
@@ -763,16 +787,18 @@
   // Mission values are free text and land in innerHTML — escape so a stray < or & can't
   // silently drop a value from the very table the operator signs off on.
   function hesc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function openVerify(iso, nm){
-    const d=activeData(), f=freshness(iso), rv=REVIEWED[iso];
+  function openVerify(iso, nm, li){
+    if(li != null) CURLEG = li;
+    const key = CURLEG + '-' + iso;
+    const d=activeData(), f=freshness(iso), rv=REVIEWED[key];
     const rows=[['Aircraft',d.aircraft],['Tail numbers',d.tails],['Callsign',d.callsign],['Captain',d.captain],
       ['Crew',d.crew_n],['From → To',d.sector],['Date',d.date],['Purpose',d.purpose],['Route (ATS)',d.route],['Cargo',d.cargo]];
-    document.getElementById('vfTitle').textContent=nm+' — verify before send';
+    document.getElementById('vfTitle').textContent=nm+(legCount()>1?` (${legName(CURLEG)})`:'')+' — verify before send';
     document.getElementById('vfProv').innerHTML=`<span class="dot ${f.dot}"></span> Template ${hesc(f.label)} ${hesc(fmtDate(f.date))} · owner: ${hesc(f.owner)}`+
       (f.state==='stale'?' <b style="color:var(--blocked)">— re-verify against the host\'s current form first</b>':'');
     document.getElementById('vfData').innerHTML=rows.map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('');
     document.getElementById('vfBy').value = rv ? rv.by : (ME.name||'');
-    document.getElementById('vfState').dataset.iso=iso;
+    document.getElementById('vfState').dataset.iso=iso; document.getElementById('vfState').dataset.leg=CURLEG;
     document.getElementById('vfDone').textContent=rv?`✓ Signed off by ${rv.by} · ${rv.at}`:'';
     document.getElementById('verifymodal').classList.add('show');
   }
@@ -791,9 +817,10 @@
     document.getElementById('pvBody').innerHTML='';   // drop the iframe so the PDF unloads
     pvRevoke();
   }
-  async function openPreview(iso, nm, fmt, v){
+  async function openPreview(iso, nm, fmt, v, li){
+    if(li != null) CURLEG = li;
     const m=document.getElementById('previewmodal'), body=document.getElementById('pvBody');
-    document.getElementById('pvTitle').textContent = nm+' — preview';
+    document.getElementById('pvTitle').textContent = nm+(legCount()>1?` (${legName(CURLEG)})`:'')+' — preview';
     document.getElementById('pvName').textContent = '';
     document.getElementById('pvNote').textContent = '';
     body.innerHTML = '<div class="pvwait">Building the form…</div>';
@@ -848,9 +875,10 @@
     }
   }
   function signoff(){
-    const iso=document.getElementById('vfState').dataset.iso, by=(document.getElementById('vfBy').value.trim()||'—');
-    REVIEWED[iso]={by, at:fmtDate(new Date().toISOString())};
-    const el=document.getElementById('rev-'+iso); if(el){ el.textContent='✓ reviewed · '+by; el.classList.add('ok'); }
+    const iso=document.getElementById('vfState').dataset.iso, li=document.getElementById('vfState').dataset.leg||'0';
+    const by=(document.getElementById('vfBy').value.trim()||'—');
+    REVIEWED[li+'-'+iso]={by, at:fmtDate(new Date().toISOString())};
+    const el=document.getElementById('rev-'+li+'-'+iso); if(el){ el.textContent='✓ reviewed · '+by; el.classList.add('ok'); }
     toast('Signed off — reviewed by '+by); closeVerify();
   }
 
@@ -865,7 +893,11 @@
         <span class="lead">${c.lead}</span>
       </div>`; }).join("");
     const n = COUNTRIES.filter(c=>c.on).length;
-    document.getElementById("genlbl").textContent = `Generate ${n} form${n!==1?'s':''}`;
+    // a return leg doubles the output, so say so before the button is pressed
+    const legs = (typeof RET !== 'undefined' && RET.on) ? 2 : 1;
+    const total = n * legs;
+    document.getElementById("genlbl").textContent =
+      `Generate ${total} form${total!==1?'s':''}` + (legs>1 ? ` · ${n} each way` : '');
   }
   function toggleCountry(i){ COUNTRIES[i].on=!COUNTRIES[i].on; renderList(); }
 
@@ -873,32 +905,46 @@
     const sel = COUNTRIES.filter(c=>c.on);
     if(!sel.length){ toast("Pick at least one country first"); return; }
     // Freeze the mission. Everything this batch shows, signs and emits reads from here.
-    const d = buildData(); BATCH = { data:d, at:Date.now(), sig:missionSig(d) };
-    REVIEWED = {}; markDrift(false);
-    document.getElementById("strips").innerHTML = sel.map((c,i)=>{
-      const f = freshness(c.iso); const dcn = `DCR0${42+i}-26`;
-      return `<div class="strip" style="animation-delay:${i*70}ms">
-        <span class="bar" style="background:${f.col}"></span>
-        <div class="co"><div class="c">${c.nm}</div><div class="iso">${c.iso} · ${c.fmt}</div>
-          <div class="prov"><span class="dot ${f.dot}"></span>${f.label} ${fmtDate(f.date)}</div></div>
-        <div class="data">
-          <div class="kv"><div class="k">Callsign</div><div class="v">${hesc(d.callsign)}</div></div>
-          <div class="kv"><div class="k">Aircraft</div><div class="v">${hesc(d.aircraft)}</div></div>
-          <div class="kv"><div class="k">Tail</div><div class="v">${hesc(d.tails)}</div></div>
-          <div class="kv"><div class="k">Date</div><div class="v">${hesc(d.date)}</div></div>
-        </div>
-        <div class="stampwrap"><div class="stamp"><div><div class="t">DIP<br>CLR</div><div class="n">${dcn}</div></div></div></div>
-        <div class="act">
-          <button class="dl" onclick="dl('${c.iso}','${c.nm}','${c.fmt}','${c.v}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg>Download</button>
-          <button class="vbtn" onclick="openPreview('${c.iso}','${c.nm.replace(/'/g,'')}','${c.fmt}','${c.v}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
-          <button class="vbtn" onclick="openVerify('${c.iso}','${c.nm.replace(/'/g,'')}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>Verify &amp; sign</button>
-          <div class="ver" id="rev-${c.iso}">⚠ not reviewed</div>
-        </div>
-      </div>`;
+    // An overnight produces two clearances, so the freeze holds one entry per leg.
+    const legs = [{ name:'OUTBOUND', data: buildData() }];
+    if(RET.on) legs.push({ name:'INBOUND', data: buildData(retOverride()) });
+    BATCH = { legs, at:Date.now(), sig: liveSig() };
+    CURLEG = 0; REVIEWED = {}; markDrift(false);
+    // One strip per country per clearance. The leg index rides on every action so a download,
+    // a preview and a sign-off all describe the same leg as the strip they came from.
+    document.getElementById("strips").innerHTML = BATCH.legs.map((L, li) => {
+      const head = BATCH.legs.length > 1
+        ? `<div class="leghd"><span class="tag">${hesc(L.name)}</span>
+             <span>${hesc(L.data.sector)}</span><span class="dt">${hesc(L.data.date)} · off ${hesc(L.data.etd)||'—'}</span></div>`
+        : '';
+      return head + sel.map((c,i)=>{
+        const f = freshness(c.iso); const dcn = `DCR0${42+i}-26${BATCH.legs.length>1?(li?'B':'A'):''}`;
+        const d = L.data;
+        return `<div class="strip" style="animation-delay:${i*70}ms">
+          <span class="bar" style="background:${f.col}"></span>
+          <div class="co"><div class="c">${c.nm}</div><div class="iso">${c.iso} · ${c.fmt}</div>
+            <div class="prov"><span class="dot ${f.dot}"></span>${f.label} ${fmtDate(f.date)}</div></div>
+          <div class="data">
+            <div class="kv"><div class="k">Callsign</div><div class="v">${hesc(d.callsign)}</div></div>
+            <div class="kv"><div class="k">Aircraft</div><div class="v">${hesc(d.aircraft)}</div></div>
+            <div class="kv"><div class="k">Tail</div><div class="v">${hesc(d.tails)}</div></div>
+            <div class="kv"><div class="k">Date</div><div class="v">${hesc(d.date)}</div></div>
+          </div>
+          <div class="stampwrap"><div class="stamp"><div><div class="t">DIP<br>CLR</div><div class="n">${dcn}</div></div></div></div>
+          <div class="act">
+            <button class="dl" onclick="dl('${c.iso}','${c.nm}','${c.fmt}','${c.v}',${li})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg>Download</button>
+            <button class="vbtn" onclick="openPreview('${c.iso}','${c.nm.replace(/'/g,'')}','${c.fmt}','${c.v}',${li})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
+            <button class="vbtn" onclick="openVerify('${c.iso}','${c.nm.replace(/'/g,'')}',${li})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>Verify &amp; sign</button>
+            <div class="ver" id="rev-${li}-${c.iso}">⚠ not reviewed</div>
+          </div>
+        </div>`;
+      }).join("");
     }).join("");
-    document.getElementById("scount").textContent = `${sel.length} ready · ~${Math.round(sel.length*40)} min saved`;
+    const total = sel.length * BATCH.legs.length;
+    document.getElementById("scount").textContent =
+      `${total} ready${BATCH.legs.length>1?` · ${sel.length} each way`:''} · ~${Math.round(total*40)} min saved`;
     const b=document.getElementById('dlallbtn'); if(b) b.style.display='inline-flex';
-    document.getElementById('dlalllbl').textContent = `Download all ${sel.length}`;
+    document.getElementById('dlalllbl').textContent = `Download all ${sel.length * BATCH.legs.length}`;
     downloadAll();
   }
 
@@ -949,19 +995,20 @@
   }
   // Walks the legs once and returns each point's ETA/ETD as real Date objects, so a rollover
   // is arithmetic rather than a string the planner has to notice.
-  function itinerary(){
-    const d0 = parseDMY(fld('f_date'));                   // mission date, 00:00 UTC
-    const hhmm = (fld('f_etd')||'').replace(/\D/g,'').padStart(4,'0');
+  function itinerary(legs, dateStr, etdStr){
+    legs = legs || LEGS;
+    const d0 = parseDMY(dateStr != null ? dateStr : fld('f_date'));   // mission date, 00:00 UTC
+    const hhmm = String(etdStr != null ? etdStr : fld('f_etd')||'').replace(/\D/g,'').padStart(4,'0');
     let clock = new Date(d0.getTime());
     clock.setUTCHours(parseInt(hhmm.slice(0,2))||0, parseInt(hhmm.slice(2,4))||0, 0, 0);
     const gs = fld('f_gs'), out = [];
-    LEGS.forEach((L,i) => {
+    legs.forEach((L,i) => {
       let eta = null, autoNm = 0;
       // If no leg time was entered and both ends of the leg are airfields we hold a position
       // for, derive it from the distance at the entered ground speed. Typing a value overrides
       // this — the planner's own figure always wins, because they know the winds and we do not.
       if(i > 0 && !String(L.leg||'').trim()){
-        const a = posOf(LEGS[i-1]), b = posOf(L);
+        const a = posOf(legs[i-1]), b = posOf(L);
         if(a && b){ autoNm = gcNm(a, b); }
       }
       const mins = String(L.leg||'').trim()
@@ -970,7 +1017,7 @@
       if(i > 0){ clock = new Date(clock.getTime() + mins*60000); eta = new Date(clock.getTime()); }
       const g = legMinutes(L.gnd, gs);
       let etd = null;
-      const last = i === LEGS.length-1;
+      const last = i === legs.length-1;
       // A point only has an ETD if something departs from it: the origin always, and a stop
       // where the aircraft spends time on the ground. An overflight crossing gets an ETA and
       // a dash, which is how the host tables themselves are laid out.
@@ -1031,29 +1078,94 @@
     if(unset.length) ft.textContent += `   ·   no leg time for ${unset.map(r=>r.pt||'a point').join(', ')} — counted as zero`;
     checkDrift();
   }
+  // The return leg: its own points and its own clock. Seeded by reversing the outbound the
+  // first time it is switched on, because that is what it almost always is.
+  let RET = { on:false, legs:[] };
+  function toggleReturn(){
+    RET.on = !RET.on;
+    document.getElementById('rtsw').classList.toggle('on', RET.on);
+    document.getElementById('retpanel').style.display = RET.on ? 'block' : 'none';
+    if(RET.on && !RET.legs.length){
+      RET.legs = LEGS.slice().reverse().map((L,i,a) => ({
+        pt:L.pt, fir:L.fir, leg:'', gnd:'',
+        rem: i===0 ? 'Departure' : (i===a.length-1 ? 'Destination' : (L.rem||'').replace(/enter/i,'Exit').replace(/exit/i,'Enter'))
+      }));
+      // leg times belong to the pair of points, so shift them one place on reversal
+      for(let i=1;i<RET.legs.length;i++) RET.legs[i].leg = LEGS[LEGS.length-i]?.leg || '';
+      const d=document.getElementById('r_date'); if(d && !d.value) d.value = fld('f_date');
+    }
+    renderRetLegs(); renderList(); checkDrift();
+  }
+  function retOverride(){
+    return { name:'INBOUND', legs:RET.legs, date:fld('r_date'), etd:fld('r_etd'),
+             capt:fld('r_capt'), crew:fld('r_crew'),
+             route: RET.legs.map(l=>l.pt).filter(Boolean).join(' — ') };
+  }
+  function renderRetLegs(){
+    const rows=document.getElementById('retrows'); if(!rows || !RET.on) return;
+    const ov=retOverride();
+    const out=itinerary(RET.legs, ov.date, ov.etd);
+    const d0=parseDMY(ov.date);
+    rows.innerHTML = out.map((r,i)=>`
+      <div class="legrow">
+        <input value="${hesc(r.pt)}"  oninput="setRetLeg(${i},'pt',this.value)"  placeholder="Point">
+        <input value="${hesc(r.fir)}" oninput="setRetLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">
+        <input value="${hesc(r.leg)}" oninput="setRetLeg(${i},'leg',this.value)"
+               placeholder="${i ? (r.autoMin ? r.autoMin+'' : 'min') : '—'}" ${i?'':'disabled'}
+               class="${r.unset ? 'unset' : (r.autoMin && !String(r.leg||'').trim() ? 'auto' : '')}">
+        <input value="${hesc(r.gnd)}" oninput="setRetLeg(${i},'gnd',this.value)"
+               placeholder="${i===out.length-1?'—':'min'}" ${i===out.length-1?'disabled':''}>
+        <span data-lbl="ETA" class="calc ${r.rolled?'roll':''}">${r.eta?hesc(zCell(r.eta,d0)):'—'}</span>
+        <span data-lbl="ETD" class="calc">${r.etd?hesc(zCell(r.etd,d0)):'—'}</span>
+        <button type="button" class="rm" onclick="rmRetLeg(${i})" aria-label="Remove">×</button>
+      </div>`).join('');
+    const first=out[0], last=out[out.length-1];
+    const total=(first&&last&&last.eta)?Math.round((last.eta-(first.etd||first.eta))/60000):0;
+    const unset=out.filter(r=>r.unset);
+    document.getElementById('retsum').textContent = `${out.length} points`;
+    const ft=document.getElementById('retft');
+    ft.textContent = (first&&first.etd?`OFF ${zTime(first.etd)}`:'') +
+      (last&&last.eta?`   ·   ON ${zTime(last.eta)}   ·   ${Math.floor(total/60)}h ${total%60}m`:'') +
+      (out.some(r=>r.rolled)?'   ·   crosses midnight — dates rolled':'');
+    ft.classList.toggle('warn', unset.length>0);
+    if(unset.length) ft.textContent += `   ·   no leg time for ${unset.map(r=>r.pt||'a point').join(', ')} — counted as zero`;
+  }
+  function setRetLeg(i,k,v){ if(RET.legs[i]){ RET.legs[i][k]=v; renderRetLegs(); checkDrift(); } }
+  function rmRetLeg(i){ if(RET.legs.length>2){ RET.legs.splice(i,1); renderRetLegs(); } else toast("A leg needs a departure and a destination"); }
+  function addRetLeg(){ RET.legs.splice(RET.legs.length-1,0,{pt:'',fir:'',leg:'',gnd:'',rem:'Enter FIR'}); renderRetLegs(); }
+
   function setLeg(i,k,v){ if(LEGS[i]){ LEGS[i][k]=v; renderLegs(); } }
   function rmLeg(i){ if(LEGS.length>2){ LEGS.splice(i,1); renderLegs(); } else toast("An itinerary needs a departure and a destination"); }
   function addLeg(){ LEGS.splice(LEGS.length-1, 0, {pt:"",fir:"",leg:"",gnd:"",rem:"Enter FIR"}); renderLegs(); }
 
-  function buildData(){
+  // An overnight sortie needs TWO clearances, not one: the host clears the outbound and the
+  // inbound separately. ov carries what genuinely differs on the way back — the date, the
+  // off-blocks, who is in the left seat, how many are aboard, and the itinerary reversed.
+  // Everything else (aircraft, tails, callsign, cargo, purpose) is the same sortie.
+  function buildData(ov){
+    ov = ov || null;
+    const F = (id, key) => ov && ov[key] != null && String(ov[key]).trim() !== '' ? String(ov[key]).trim() : fld(id);
     const placeName = s => s.replace(/\s*\(.*\)\s*$/,'').toUpperCase().trim();
-    const from = placeName(fld('f_from')), to = placeName(fld('f_to'));
+    const legsSrc = ov && ov.legs ? ov.legs : LEGS;
+    const from = placeName(ov && ov.legs ? (legsSrc[0]||{}).pt || fld('f_from') : fld('f_from'));
+    const to   = placeName(ov && ov.legs ? (legsSrc[legsSrc.length-1]||{}).pt || fld('f_to') : fld('f_to'));
     const prim = selTails[0]||'', alt = selTails.slice(1);
     const dg = document.getElementById('dgsw').classList.contains('on');
     const cargo = dg ? ([fld('f_un'),fld('f_class'),fld('f_wt')].filter(Boolean).join(' · ') || 'DANGEROUS GOODS') : 'PERSONAL BAGGAGE & FAK';
     const now = new Date();
     const dtd = `${String(now.getDate()).padStart(2,'0')} ${MON[now.getMonth()]} ${String(now.getFullYear()).slice(2)}`;
-    const capt = fld('f_capt'), crewN = fld('f_crew')||'1', purpose = fld('f_purpose');
-    const itin = itinerary();
+    const capt = F('f_capt','capt'), crewN = F('f_crew','crew')||'1', purpose = fld('f_purpose');
+    const itin = itinerary(legsSrc, F('f_date','date'), F('f_etd','etd'));
     const crewList = selTails.length > 1
       ? selTails.map((t,i) => `${t} — ${(i===0 ? capt : (CAPTAINS[t]||'')) || 'TBC'}`).join('; ')
       : capt;
     return {
-      dcr_no:"042-26 (1)", dtd, date: fld('f_date'),
+      dcr_no:"042-26 (1)", dtd, date: F('f_date','date'),
+      leg_name: ov ? (ov.name||'INBOUND') : 'OUTBOUND',
       aircraft:`${fld('acnum')} x ${document.getElementById('actype').value}`, type: document.getElementById('actype').value,
       tails: alt.length ? `${prim} (ALT: ${alt.join(', ')})` : prim,
       callsign: `${fld('f_cs')} ${fld('f_csno')}`.trim(), reg: prim,
-      sector: `${from} - ${to}`, route: fld('f_route'), dest: to,
+      sector: `${from} - ${to}`, route: F('f_route','route'), dest: to,
       time_note:"(ALL TIMES UTC)",
       // ETD/ETA are TIMES: the Indonesia template prints them in an AIRFIELD/ETA/ETD table
       // and Greece asks for "DD MMM YY, HHMM Z", so a bare date was never right here.
@@ -1100,8 +1212,11 @@
   // after generating and the strip still reads SINGA 12, still carries a named officer's
   // sign-off, and emits a .docx saying HERON 99. BATCH freezes the mission at Generate;
   // everything downstream reads the freeze, never the fields.
-  let BATCH = null;                       // { data, at } — null until the first Generate
-  function activeData(){ return BATCH ? BATCH.data : buildData(); }
+  let BATCH = null;        // { legs:[{name,data}], at, sig } — null until the first Generate
+  let CURLEG = 0;          // which clearance the engines are currently building
+  function activeData(){ return BATCH ? BATCH.legs[CURLEG].data : buildData(); }
+  function legCount(){ return BATCH ? BATCH.legs.length : 1; }
+  function legName(i){ return BATCH ? BATCH.legs[i].name : 'OUTBOUND'; }
   // Identity of a mission for drift detection. Derived from the built data rather than the
   // inputs, so it moves only when something that actually reaches a form moves.
   function missionSig(d){ return JSON.stringify(d, Object.keys(d).filter(k=>k!=='dtd').sort()); }
@@ -1118,12 +1233,18 @@
   // Called whenever any flight detail changes. Compares the live mission against the frozen
   // one; a batch that no longer matches is flagged rather than silently re-pointed, because
   // the sign-offs on screen were given for the frozen mission.
-  function checkDrift(){ if(!BATCH) return; markDrift(missionSig(buildData()) !== BATCH.sig); }
+  function liveSig(){
+    const legs = [buildData()];
+    if(RET.on) legs.push(buildData(retOverride()));
+    return legs.map(missionSig).join('||');
+  }
+  function checkDrift(){ if(!BATCH) return; markDrift(liveSig() !== BATCH.sig); }
   // Tail numbers, dangerous goods and aircraft type change outside plain input events,
   // so poll as well as listen. Cheap: a string compare on a dozen fields.
   document.addEventListener('input', e => {
     if(e.target && /^(f_date|f_etd|f_gs)$/.test(e.target.id)) renderLegs();
     if(e.target && e.target.id === 'f_capt') renderCrewTails();
+    if(e.target && /^r_(date|etd|capt|crew)$/.test(e.target.id)) renderRetLegs();
     checkDrift();
   }, true);
   document.addEventListener('change', checkDrift, true);
@@ -1355,8 +1476,12 @@
       return Promise.reject(new Error(`${nm} is ${fmt} — ${fmt} engine is next`));
     }catch(e){ return Promise.reject(e); }
   }
-  function dl(iso, nm, fmt, v){
-    dlOne(iso, nm, fmt, v).catch(e=>{ console.error(e); toast(e.message||'Generation error — see console'); });
+  // Every entry point sets CURLEG before touching an engine, so the file that comes out
+  // belongs to the leg whose strip was clicked rather than to whichever was built last.
+  function dl(iso, nm, fmt, v, li){
+    const prev = CURLEG; if(li != null) CURLEG = li;
+    dlOne(iso, nm, fmt, v).catch(e=>{ console.error(e); toast(e.message||'Generation error — see console'); })
+      .finally(()=>{ CURLEG = prev; });
   }
 
   // Build every selected form and hand back ONE archive. A per-form download loop makes
@@ -1380,13 +1505,25 @@
       // in a background tab (which would add ~20s to a 21-form run), and rAF is paused
       // there outright; a MessageChannel task is neither throttled nor paused.
       const breathe = () => new Promise(r=>{ const c=new MessageChannel(); c.port1.onmessage=()=>{ c.port1.close(); r(); }; c.port2.postMessage(0); });
-      for(let i=0;i<sel.length;i++){
-        const c = sel[i];
-        if(lbl) lbl.textContent = `Building ${i+1} of ${sel.length}…`;
-        await breathe();
-        try{ await dlOne(c.iso, c.nm, c.fmt, c.v); }
-        catch(e){ console.error(c.nm, e); failed.push(c.nm); }
+      const nLegs = legCount(), totalN = sel.length * nLegs;
+      let done = 0;
+      for(let li=0; li<nLegs; li++){
+        CURLEG = li;
+        for(let i=0;i<sel.length;i++){
+          const c = sel[i];
+          done++;
+          if(lbl) lbl.textContent = `Building ${done} of ${totalN}…`;
+          await breathe();
+          // folder each clearance separately once there is more than one, so the two never
+          // get confused for each other on the way to the host
+          const pfx = nLegs > 1 ? legName(li) + '/' : '';
+          const mark = _collect.length;
+          try{ await dlOne(c.iso, c.nm, c.fmt, c.v); }
+          catch(e){ console.error(c.nm, e); failed.push(`${c.nm}${nLegs>1?' ('+legName(li)+')':''}`); }
+          for(let k=mark;k<_collect.length;k++) _collect[k].name = pfx + _collect[k].name;
+        }
       }
+      CURLEG = 0;
       const files = _collect; _collect = null;
       if(!files.length){ toast("Nothing generated — see console"); return; }
       if(lbl) lbl.textContent = `Packing ${files.length}…`;
