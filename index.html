@@ -292,7 +292,10 @@
   .itin{margin-top:15px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
   .itin-hd{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
   .itin-hd .t{font-size:12.5px;font-weight:650;color:var(--ink)}
-  .itin-hd .addrow{margin-left:auto;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);
+  .itin-hd .routesel{margin-left:auto;height:27px;border:1px solid var(--line);border-radius:7px;
+    background:var(--paper);color:var(--ink-soft);font-size:12px;padding:0 7px;max-width:190px}
+  .itin-hd .routesel:focus{outline:none;border-color:var(--navy)}
+  .itin-hd .addrow{border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);
     border-radius:7px;height:27px;padding:0 10px;font-size:12px;font-weight:600;cursor:pointer}
   .itin-hd .addrow:hover{border-color:var(--ink-faint);color:var(--ink)}
   .itin-grid-hd,.legrow{display:grid;grid-template-columns:1.5fr 1fr 62px 62px 1.05fr 1.05fr 26px;gap:6px;align-items:center;padding:5px 12px}
@@ -321,6 +324,9 @@
   .idwho span{font-size:12px;color:var(--ink-faint)}
   .linkbtn{display:block;width:100%;margin-top:9px;background:none;border:0;color:var(--ink-faint);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
   .linkbtn:hover{color:var(--ink)}
+  .adminrow{display:flex;gap:9px;margin-top:4px}
+  .adminrow .ghost{flex:1}
+  .adminwhat{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
   .sethr{height:1px;background:var(--line);margin:15px 0 3px}
   .who{cursor:pointer}
   .who:hover{opacity:.78}
@@ -458,9 +464,14 @@
                run forward from off-blocks and roll the date over on their own, which is also what
                makes an overnight sector come out right. -->
           <div class="itin">
+            <!-- A route repeats even when the mission does not: the same points and FIR
+                 crossings serve every CHANGI-UDON THANI sortie. Saving one separately from a
+                 whole flight means the slowest part of the entry is done once. -->
             <div class="itin-hd">
               <span class="t">Itinerary &amp; FIR crossings</span>
               <span class="sub2" id="itinsum"></span>
+              <select id="routesel" class="routesel" onchange="applyRoute(this.value)" title="Recall a saved route"></select>
+              <button type="button" class="addrow" onclick="saveRoute()">Save route</button>
               <button type="button" class="addrow" onclick="addLeg()">+ Add crossing</button>
             </div>
             <div class="itin-grid-hd"><span>Point</span><span>FIR / ICAO</span><span>Leg</span><span>Ground</span><span>ETA</span><span>ETD</span><span></span></div>
@@ -563,6 +574,18 @@
       </div>
       <label class="setlbl">Point of contact <span>shown in this app only — host templates carry their own baked-in contact block</span></label>
       <div class="setrow3"><input id="set_pocname" placeholder="Name"><input id="set_poctel" placeholder="Tel"><input id="set_pocemail" placeholder="Email"></div>
+      <div class="sethr"></div>
+      <!-- Everything this app knows lives in this browser's storage, which is per-machine and
+           dies with a cleared cache. A desk that wants one shared set of routes, airfields and
+           fleet keeps the exported file on a drive and each planner imports it. There is no
+           server to sync with, and that is the point. -->
+      <label class="setlbl">Administration <span>this library lives in this browser only — export it to share it or back it up</span></label>
+      <div class="adminrow">
+        <button class="ghost" onclick="exportLibrary()">Export library…</button>
+        <button class="ghost" onclick="document.getElementById('libfile').click()">Import library…</button>
+        <input type="file" id="libfile" accept="application/json,.json" style="display:none" onchange="importLibrary(this)">
+      </div>
+      <div class="adminwhat" id="adminwhat"></div>
     </div>
     <div class="mf"><button class="ghost" onclick="resetSettings()">Reset to defaults</button><button class="done" onclick="saveSettings()">Save settings</button></div>
   </div>
@@ -1175,6 +1198,48 @@
   function rmRetLeg(i){ if(RET.legs.length>2){ RET.legs.splice(i,1); renderRetLegs(); } else toast("A leg needs a departure and a destination"); }
   function addRetLeg(){ RET.legs.splice(RET.legs.length-1,0,{pt:'',fir:'',leg:'',gnd:'',rem:'Enter FIR'}); renderRetLegs(); }
 
+  // ---- route library -----------------------------------------------------------------
+  // Routes are stored apart from flights on purpose. A flight is a one-off — this date, this
+  // crew, this reference. A route is the part that repeats, so recalling one leaves the
+  // mission alone and only refills the points, their timings and the ground speed.
+  function getRoutes(){ try{ return JSON.parse(localStorage.getItem('dc_routes')||'{}'); }catch(e){ return {}; } }
+  function putRoutes(r){ try{ localStorage.setItem('dc_routes', JSON.stringify(r)); }catch(e){} renderRoutes(); }
+  function routeLabel(legs){
+    const pts = legs.map(l=>l.pt).filter(Boolean);
+    return pts.length>1 ? `${pts[0]} — ${pts[pts.length-1]}` : (pts[0]||'route');
+  }
+  function renderRoutes(){
+    const sel=document.getElementById('routesel'); if(!sel) return;
+    const names=Object.keys(getRoutes()).sort();
+    sel.innerHTML = `<option value="">${names.length?'Recall a route…':'No saved routes'}</option>`
+      + names.map(n=>`<option value="${hesc(n)}">${hesc(n)}</option>`).join('');
+    sel.value='';
+  }
+  function saveRoute(){
+    const pts = LEGS.map(l=>l.pt).filter(Boolean);
+    if(pts.length < 2){ toast("A route needs at least a departure and a destination"); return; }
+    const name = prompt('Save this route as:', routeLabel(LEGS));
+    if(!name) return;
+    const r = getRoutes();
+    if(r[name] && !confirm(`"${name}" already exists. Replace it?`)) return;
+    r[name] = { legs: JSON.parse(JSON.stringify(LEGS)), gs: fld('f_gs'),
+                by: (ME.name||'').trim(), at: new Date().toISOString().slice(0,10) };
+    putRoutes(r); toast(`Route "${name}" saved`);
+  }
+  function applyRoute(name){
+    if(!name) return;
+    const r = getRoutes()[name]; if(!r){ renderRoutes(); return; }
+    LEGS = JSON.parse(JSON.stringify(r.legs));
+    if(r.gs) { const g=document.getElementById('f_gs'); if(g) g.value=r.gs; }
+    renderLegs(); checkDrift(); renderRoutes();
+    toast(`Route "${name}" loaded — dates, crew and reference untouched`);
+  }
+  function deleteRoute(name){
+    const r=getRoutes(); if(!r[name]) return;
+    if(!confirm(`Delete the route "${name}"?`)) return;
+    delete r[name]; putRoutes(r); toast(`Route "${name}" deleted`);
+  }
+
   function setLeg(i,k,v){ if(LEGS[i]){ LEGS[i][k]=v; renderLegs(); } }
   function rmLeg(i){ if(LEGS.length>2){ LEGS.splice(i,1); renderLegs(); } else toast("An itinerary needs a departure and a destination"); }
   function addLeg(){ LEGS.splice(LEGS.length-1, 0, {pt:"",fir:"",leg:"",gnd:"",rem:"Enter FIR"}); renderLegs(); }
@@ -1609,12 +1674,21 @@
   if((location.search+location.hash).indexOf('dark')>=0) applyTheme('dark');
 
   // ---- saved missions / presets (persisted) ----
+  // A saved flight has to come back whole. collectForm captured the itinerary, the off-blocks
+  // and the ground speed from the day this was written; applyForm never put them back, so
+  // loading a saved flight silently returned the longest part of the entry to its defaults.
   function collectForm(){
-    return { actype:document.getElementById('actype').value, acnum:fld('acnum'),
+    return { v:2,
+      actype:document.getElementById('actype').value, acnum:fld('acnum'),
       cs:fld('f_cs'), csno:fld('f_csno'), capt:fld('f_capt'), crew:fld('f_crew'), pax:fld('f_pax'),
       from:document.getElementById('f_from').value, to:document.getElementById('f_to').value,
       date:fld('f_date'), purpose:document.getElementById('f_purpose').value, route:fld('f_route'),
-      etdt:fld('f_etd'), gs:fld('f_gs'), legs:JSON.parse(JSON.stringify(LEGS)),
+      dcr:fld('f_dcr'), etdt:fld('f_etd'), gs:fld('f_gs'),
+      legs:JSON.parse(JSON.stringify(LEGS)),
+      captains:JSON.parse(JSON.stringify(CAPTAINS)),
+      ret: RET.on ? { on:true, legs:JSON.parse(JSON.stringify(RET.legs)),
+                      date:fld('r_date'), etd:fld('r_etd'), capt:fld('r_capt'),
+                      crew:fld('r_crew'), dcr:fld('r_dcr') } : { on:false },
       tails:selTails.slice(), dg:document.getElementById('dgsw').classList.contains('on') };
   }
   function applyForm(m){
@@ -1622,8 +1696,21 @@
     set('actype',m.actype); set('acnum',m.acnum); set('f_cs',m.cs); set('f_csno',m.csno);
     set('f_capt',m.capt); set('f_crew',m.crew); set('f_pax',m.pax); set('f_from',m.from); set('f_to',m.to);
     set('f_date',m.date); set('f_purpose',m.purpose); set('f_route',m.route);
+    set('f_dcr',m.dcr); set('f_etd',m.etdt); set('f_gs',m.gs);
+    if(Array.isArray(m.legs) && m.legs.length) LEGS = JSON.parse(JSON.stringify(m.legs));
+    CAPTAINS = m.captains ? JSON.parse(JSON.stringify(m.captains)) : {};
     if(Array.isArray(m.tails)){ selTails=m.tails.slice(); paintTails(); }
     if(!!m.dg !== document.getElementById('dgsw').classList.contains('on')) toggleDG();
+    // the return leg is restored to whatever it was, including switched off
+    const wantRet = !!(m.ret && m.ret.on);
+    if(wantRet !== RET.on) toggleReturn();
+    if(wantRet){
+      RET.legs = Array.isArray(m.ret.legs) ? JSON.parse(JSON.stringify(m.ret.legs)) : RET.legs;
+      set('r_date',m.ret.date); set('r_etd',m.ret.etd); set('r_capt',m.ret.capt);
+      set('r_crew',m.ret.crew); set('r_dcr',m.ret.dcr);
+      renderRetLegs();
+    }
+    renderLegs(); renderCrewTails(); checkDrift();
   }
   function getPresets(){ try{ return JSON.parse(localStorage.getItem('dc_presets')||'{}'); }catch(e){ return {}; } }
   function renderPresets(){
@@ -1655,12 +1742,70 @@
   function loadSettings(){ try{ const s=JSON.parse(localStorage.getItem('dc_settings')||'null'); if(s) applySettings(s); }catch(e){} }
   function fleetToText(){ return [...FLEET.frequent,...FLEET.rest].map(a=>a.type+" | "+a.tails.join(", ")).join("\n"); }
   function openSettings(){
+    describeLibrary();
     document.getElementById('set_fleet').value=fleetToText();
     document.getElementById('set_air').value=AIRFIELDS.join("\n");
     document.getElementById('set_pur').value=PURPOSES.join("\n");
     document.getElementById('set_pocname').value=POC.name||''; document.getElementById('set_poctel').value=POC.tel||''; document.getElementById('set_pocemail').value=POC.email||'';
     document.getElementById('setmodal').classList.add('show');
   }
+  // ---- the library: everything this machine holds, in one portable file ----------------
+  const LIB_KEYS = { dc_settings:'reference data', dc_routes:'routes',
+                     dc_presets:'saved flights', dc_freshness:'template verifications' };
+  function libSnapshot(){
+    const out = { kind:'diploclear-library', version:1,
+                  exported: new Date().toISOString(), by:(ME.name||'').trim()||null, data:{} };
+    for(const k of Object.keys(LIB_KEYS)){
+      try{ const v=localStorage.getItem(k); if(v) out.data[k]=JSON.parse(v); }catch(e){}
+    }
+    return out;
+  }
+  function describeLibrary(){
+    const el=document.getElementById('adminwhat'); if(!el) return;
+    const d=libSnapshot().data;
+    const n = o => o && typeof o==='object' ? Object.keys(o).length : 0;
+    el.textContent = [
+      `${n(d.dc_routes)} route${n(d.dc_routes)===1?'':'s'}`,
+      `${n(d.dc_presets)} saved flight${n(d.dc_presets)===1?'':'s'}`,
+      `${n(d.dc_freshness)} recorded verification${n(d.dc_freshness)===1?'':'s'}`,
+      d.dc_settings ? 'reference data edited' : 'reference data at defaults',
+    ].join('  ·  ');
+  }
+  function exportLibrary(){
+    const stamp = new Date().toISOString().slice(0,10);
+    downloadBlob(new Blob([JSON.stringify(libSnapshot(),null,2)],{type:'application/json'}),
+                 `DiploClear-library-${stamp}.json`);
+    toast('Library exported — keep it where the desk can reach it');
+  }
+  function importLibrary(input){
+    const file = input.files && input.files[0]; input.value='';
+    if(!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      let snap;
+      try{ snap = JSON.parse(rd.result); }
+      catch(e){ toast('That file is not readable as a library'); return; }
+      if(!snap || snap.kind !== 'diploclear-library'){ toast('That is not a DiploClear library file'); return; }
+      const d = snap.data || {};
+      const n = o => o && typeof o==='object' ? Object.keys(o).length : 0;
+      const when = (snap.exported||'').slice(0,10), who = snap.by ? ` by ${snap.by}` : '';
+      // Importing REPLACES. Say exactly what is coming in and what is going out first.
+      const msg = `Import the library exported ${when||'(undated)'}${who}?\n\n`
+        + `Coming in:\n  ${n(d.dc_routes)} routes\n  ${n(d.dc_presets)} saved flights\n`
+        + `  ${n(d.dc_freshness)} verifications\n  ${d.dc_settings?'reference data':'no reference data'}\n\n`
+        + `This REPLACES what is on this machine:\n`
+        + `  ${Object.keys(getRoutes()).length} routes, ${Object.keys(getPresets()).length} saved flights.`;
+      if(!confirm(msg)) return;
+      for(const k of Object.keys(LIB_KEYS)){
+        try{ if(d[k] != null) localStorage.setItem(k, JSON.stringify(d[k])); }catch(e){}
+      }
+      loadSettings(); loadFreshness(); renderRefData(); initFleet();
+      renderRoutes(); renderPresets(); renderList(); describeLibrary();
+      toast('Library imported');
+    };
+    rd.readAsText(file);
+  }
+
   function closeSettings(){ document.getElementById('setmodal').classList.remove('show'); }
   function parseFleet(txt){
     const arr=txt.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
@@ -1680,7 +1825,7 @@
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); loadIdentity(); loadFreshness(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
+  loadSettings(); loadIdentity(); loadFreshness(); renderRoutes(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
   if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>

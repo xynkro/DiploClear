@@ -42,6 +42,20 @@ off-blocks, captain and crew — and Generate produces both, foldered `OUTBOUND/
 Several airframes on one request each get their own commander, and the crew list carries all
 of them, because a form naming three tails and one captain is wrong.
 
+### Routes, saved flights, and the library
+A **route** is the part that repeats — the points, their FIR crossings, the leg timings and
+the ground speed. It is stored apart from a flight, so recalling one refills the itinerary
+and leaves the date, crew and clearance reference alone. A **saved flight** is the whole
+entry, for an amendment or a repeat; it now restores everything it captures, including the
+itinerary, off-blocks, reference and return leg, which it previously dropped on load.
+
+Everything the app knows lives in this browser's storage: per-machine, and gone with a
+cleared cache. **Settings → Administration** exports the lot — routes, saved flights,
+reference data and recorded verifications — as one JSON file. A desk that wants a shared
+repository keeps that file on a drive and each planner imports it; import replaces what is
+there and says exactly what is coming in and going out first. There is no server to sync
+with, which is the same reason the rest of the app works from `file://`.
+
 ### Hard rule: one frozen mission per batch
 **Generate** freezes the flight. The strips, the verify table a planner signs, every
 filename and all four engines read that freeze, so a strip, its sign-off and the document
@@ -60,12 +74,13 @@ The packet must stay uncompressed for the runtime substitution to be safe; the e
 outright if it is not plain XML.
 
 ### Gates
-`node tools/xfa_flatten/validate_all21.js` runs seven, each with a positive control so a
+`node tools/xfa_flatten/validate_all21.js` runs eight, each with a positive control so a
 blind check cannot pass: 21-of-21 generation, ARCHIVE, FROZEN-MISSION, NO-BAKED-DATES (no
 template may carry another mission's dates or times), NO-AUTHOR-METADATA (docProps must name
 nobody), AUSTRALIA-LIVE-XFA, AIRFIELD-POSITIONS (distances checked against SkyVector's own
-published figures), and REFERENCE-AND-FRESHNESS (no fabricated clearance reference, and
-verifications must be recordable).
+published figures), REFERENCE-AND-FRESHNESS (no fabricated clearance reference, and
+verifications must be recordable), and LIBRARY-ROUNDTRIP (anything a saved flight captures
+must be restored, and the library must stay portable).
 
 ### Hard rule: format-in = format-out
 The host gives a `.docx`, they get a `.docx` back. The master template **is** the host

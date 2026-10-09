@@ -70,6 +70,53 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: a saved flight must come back whole, and the library must be portable --
+// collectForm captured the itinerary, off-blocks and ground speed; applyForm put none of them
+// back, so loading a saved flight silently reset the longest part of the entry. Anything
+// captured must be restored, or the save is a quiet lie.
+(() => {
+  const fails = [];
+  const slice = (name) => { const i = html.indexOf("function " + name);
+    return i < 0 ? "" : html.slice(i, html.indexOf("\n  }", i)); };
+  const cap = slice("collectForm"), app = slice("applyForm");
+  if(!cap || !app) fails.push("collectForm/applyForm not found");
+  else {
+    const captured = [...new Set([...cap.matchAll(/(\w+)\s*:/g)].map(m => m[1]))]
+      .filter(k => !["v","on","legs","pt","fir","leg","gnd","rem"].includes(k));
+    const orphan = captured.filter(k => !new RegExp("\\b" + k + "\\b").test(app));
+    if(orphan.length) fails.push("saved but never restored: " + orphan.join(", "));
+    for(const [re, what] of [[/if\(Array\.isArray\(m\.legs\)/, "the itinerary"],
+                             [/set\('f_etd',\s*m\.etdt\)/, "off-blocks"],
+                             [/set\('f_gs',\s*m\.gs\)/, "ground speed"],
+                             [/set\('f_dcr',\s*m\.dcr\)/, "the clearance reference"],
+                             [/m\.ret\s*&&\s*m\.ret\.on/, "the return leg"]])
+      if(!re.test(app)) fails.push(`applyForm does not restore ${what}`);
+  }
+  for(const [re, what] of [[/function saveRoute\(/, "saving a route"],
+                           [/function applyRoute\(/, "recalling a route"],
+                           [/localStorage\.setItem\('dc_routes'/, "routes persisted"],
+                           [/function exportLibrary\(/, "library export"],
+                           [/function importLibrary\(/, "library import"],
+                           [/kind\s*!==\s*'diploclear-library'/, "import rejecting a foreign file"],
+                           [/const LIB_KEYS/, "the library key list"]])
+    if(!re.test(html)) fails.push(`missing ${what}`);
+  // recalling a route must not touch the mission around it
+  const ar = slice("applyRoute");
+  if(/f_date|f_capt|f_cs\b|f_dcr/.test(ar)) fails.push("applyRoute writes mission fields — a route must only set the itinerary");
+  // every key the export carries must be one the import restores
+  const keys = (html.match(/const LIB_KEYS = \{([\s\S]*?)\};/)||[,""])[1];
+  const nKeys = (keys.match(/dc_\w+\s*:/g)||[]).length;
+  console.log(`\nLIBRARY-ROUNDTRIP  library keys=${nKeys}  problems=${fails.length}`);
+  console.log(fails.length ? "==> LIBRARY-ROUNDTRIP FAILED\n    - " + fails.join("\n    - ")
+                           : "==> LIBRARY-ROUNDTRIP OK — saved flights restore whole, routes and library are portable");
+  // control: a field captured but not restored must be caught
+  const fakeCap = "return { v:2, widget:fld('f_widget') };", fakeApp = "set('f_date',m.date);";
+  const caught = [...new Set([...fakeCap.matchAll(/(\w+)\s*:/g)].map(m=>m[1]))]
+    .filter(k => !["v"].includes(k)).some(k => !new RegExp("\\b"+k+"\\b").test(fakeApp));
+  console.log(caught ? "    control: a captured-but-unrestored field IS caught"
+                     : "    !! CONTROL FAILED — the round-trip check is blind");
+})();
+
 // ---- invariant: no fabricated clearance reference, and freshness must be recordable ----
 // dcr_no shipped hardcoded to the sample mission's "042-26 (1)", so every form of every
 // mission carried the same reference — the number the host tracks the request by. The stamp
