@@ -128,6 +128,12 @@
   .legend i{display:inline-flex;align-items:center;gap:5px;font-style:normal}
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
   .d-cl{background:var(--cleared)} .d-pe{background:var(--pending)} .d-bl{background:var(--blocked)}
+  /* Always visible. Hiding it until hover is how the preview got missed in the first place. */
+  .crow .peek{opacity:.45;border:0;background:none;color:var(--ink-faint);cursor:pointer;padding:2px 4px;
+    border-radius:5px;line-height:1;transition:opacity .12s,color .12s}
+  .crow:hover .peek{opacity:.8}
+  .crow .peek:hover,.crow .peek:focus-visible{opacity:1;color:var(--navy);background:var(--panel)}
+  .fromroute{margin-right:8px}
   .crow{display:flex;align-items:center;gap:12px;padding:11px 6px;border-top:1px solid var(--line)}
   .crow:first-child{border-top:none}
   .chk{width:18px;height:18px;border-radius:5px;border:1.5px solid #c2cad3;flex:none;display:grid;place-items:center;color:#fff;transition:.12s}
@@ -533,6 +539,7 @@
         <div class="bd">
           <div id="clist"></div>
           <div class="genbar">
+            <button class="ghost fromroute" onclick="selectFromRoute()" title="Tick the countries whose ICAO codes appear in this mission">From route</button>
             <button class="gen" onclick="generate()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h4"/></svg><span id="genlbl">Generate 4 forms</span></button>
             <span class="hint"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>change the route → forms regenerate</span>
           </div>
@@ -554,6 +561,7 @@
       <span>The flight has changed since these were generated. They still carry the earlier mission.</span>
       <button onclick="generate()">Regenerate</button>
     </div>
+    <datalist id="ptlist"></datalist>
     <div id="strips"><div class="empty">No forms yet. Pick the countries and select <b>Generate</b> — each one appears here, stamped and ready to download.</div></div>
   </div>
 </main>
@@ -579,6 +587,8 @@
         <div><label class="setlbl">Airfields <span>Name (ICAO)</span></label><textarea id="set_air" rows="5"></textarea></div>
         <div><label class="setlbl">Purposes</label><textarea id="set_pur" rows="5"></textarea></div>
       </div>
+      <label class="setlbl">Common points <span>one per line · Name (ICAO) — offered wherever a point is typed</span></label>
+      <textarea id="set_pts" rows="5"></textarea>
       <label class="setlbl">Point of contact <span>shown in this app only — host templates carry their own baked-in contact block</span></label>
       <div class="setrow3"><input id="set_pocname" placeholder="Name"><input id="set_poctel" placeholder="Tel"><input id="set_pocemail" placeholder="Email"></div>
       <div class="sethr"></div>
@@ -665,6 +675,12 @@
   const MISSION = {cs:"SINGA 12", ac:"A330 MRTT", tail:"764", date:"08 APR 26", to:"VTUD"};
 
   // RSAF fleet + reference lists — editable in Settings (persisted). Frequent travellers on top.
+  // Places this desk flies to often. Separate from AIRFIELDS (which drives From/To) because
+  // an itinerary also wants en-route points and fields we transit but never depart from.
+  // Edited in Settings; travels with the library.
+  let POINTS=["Korat (VTUN)","Udon Thani (VTUD)","Paya Lebar (WSAP)","Changi (WSSS)","Tengah (WSAT)",
+    "Pekanbaru (WIBB)","Hickam (PHIK)","Andersen AFB (PGUA)","Darwin (YPDN)","Butterworth (WMKB)",
+    "Subang (WMSA)","Bangkok Suvarnabhumi (VTBS)","Clark (RPLC)","Cairns (YBCS)","Perth (YPPH)"];
   let AIRFIELDS=["Changi (WSSS)","Paya Lebar (WSAP)","Tengah (WSAT)","Udon Thani (VTUD)","King Khalid (OERK)","Darwin (YPDN)"];
   let PURPOSES=["Exercise deployment","Air recovery","HADR response","Training","VIP","Ferry / positioning"];
   let POC={name:"PlansHub AOCG", tel:"", email:""};
@@ -883,9 +899,13 @@
     pvRevoke();
   }
   async function openPreview(iso, nm, fmt, v, li){
-    if(li != null) CURLEG = li;
+    // Usable before anything is generated: activeData() falls back to the live entry, so a
+    // planner can look at one country's form and fix the entry before building twenty-one.
+    if(li != null && BATCH) CURLEG = li;
     const m=document.getElementById('previewmodal'), body=document.getElementById('pvBody');
-    document.getElementById('pvTitle').textContent = nm+(legCount()>1?` (${legName(CURLEG)})`:'')+' — preview';
+    document.getElementById('pvTitle').textContent =
+      nm + (BATCH && legCount()>1 ? ` (${legName(CURLEG)})` : '')
+         + (BATCH ? ' — preview' : ' — preview of current entry');
     document.getElementById('pvName').textContent = '';
     document.getElementById('pvNote').textContent = '';
     body.innerHTML = '<div class="pvwait">Building the form…</div>';
@@ -947,6 +967,53 @@
     toast('Signed off — reviewed by '+by); closeVerify();
   }
 
+  // ICAO location indicators are assigned by prefix, so a point's code says which state's
+  // airspace it sits in. This is the published scheme, not a guess — but it only sees the
+  // countries the route actually NAMES. A Changi-Darwin route that lists no Indonesian point
+  // still crosses Indonesia, so this adds to the selection and never silently removes.
+  const ICAO_COUNTRY = {
+    WS:'SGP', WM:'MYS', WI:'IDN', WA:'IDN', WB:'MYS', VT:'THA', VV:'VNM', VD:'KHM', VL:'LAO',
+    VY:'MMR', VA:'IND', VE:'IND', VI:'IND', VO:'IND', VG:'BGD', VC:'LKA', VR:'MDV', VN:'NPL',
+    RC:'TWN', RP:'PHL', RJ:'JPN', RK:'KOR', Z:'CHN', PH:'USA', PG:'USA', K:'USA',
+    Y:'AUS', NZ:'NZL', C:'CAN', OE:'SAU', OO:'OMN', OB:'BHR', OJ:'JOR', OM:'ARE', OT:'QAT',
+    OK:'KWT', OI:'IRN', OP:'PAK', HE:'EGY', LG:'GRC', LE:'ESP', LI:'ITA', LF:'FRA',
+    ED:'DEU', ET:'DEU', EG:'GBR', LT:'TUR',
+  };
+  function countryOfIcao(code){
+    const k=String(code||'').trim().toUpperCase();
+    if(k.length<3) return null;
+    return ICAO_COUNTRY[k.slice(0,2)] || ICAO_COUNTRY[k.slice(0,1)] || null;
+  }
+  // Every ICAO this mission touches, from both legs' itineraries and the From/To fields.
+  function missionIcaos(){
+    const out=new Set();
+    const eat = legs => (legs||[]).forEach(l=>{
+      [l.fir, l.pt].forEach(x=>{ const m=String(x||'').match(/\b([A-Z]{2}[A-Z0-9]{2})\b/); if(m) out.add(m[1]); });
+      const hit = lookupPoint(l.fir) || lookupPoint(l.pt);
+      if(hit && hit.icao) out.add(hit.icao);
+    });
+    eat(LEGS); if(RET.on) eat(RET.legs);
+    [fld('f_from'), fld('f_to')].forEach(v=>{ const m=String(v||'').match(/\(([A-Z0-9]{3,4})\)/); if(m) out.add(m[1].toUpperCase()); });
+    return [...out];
+  }
+  function selectFromRoute(){
+    const icaos = missionIcaos();
+    const want = new Set(icaos.map(countryOfIcao).filter(Boolean));
+    const matched = [], already = [];
+    COUNTRIES.forEach(c => {
+      if(!want.has(c.iso)) return;
+      (c.on ? already : matched).push(c.nm);
+      c.on = true;
+    });
+    renderList();
+    const unknown = icaos.filter(i => !countryOfIcao(i));
+    if(!want.size){ toast("No country recognised from the route — the points carry no ICAO code"); return; }
+    toast(
+      (matched.length ? `Added ${matched.join(', ')}. ` : `Already selected: ${already.join(', ')}. `)
+      + `Overflown states the route does not name are not included — check those yourself.`
+    );
+  }
+
   function renderList(){
     document.getElementById("clist").innerHTML = COUNTRIES.map((c,i)=>{
       const f=freshness(c.iso);
@@ -956,6 +1023,9 @@
         <span class="fmt">${c.fmt}</span>
         <span class="dot ${f.dot}" title="Template ${f.label} ${fmtDate(f.date)} · ${f.owner}"></span>
         <span class="lead">${c.lead}</span>
+        <button class="peek" title="Look at this form before generating"
+          onclick="event.stopPropagation();openPreview('${c.iso}','${c.nm.replace(/'/g,'')}','${c.fmt}','${c.v}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>`; }).join("");
     const n = COUNTRIES.filter(c=>c.on).length;
     // a return leg doubles the output, so say so before the button is pressed
@@ -1174,12 +1244,34 @@
   // (0035Z +1). The full "DD / HHMMZ MMM YY" stays in the tooltip and in the forms.
   const dayOff = (d, d0) => d ? Math.round((Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()) - d0.getTime())/864e5) : 0;
   const zCell = (d, d0) => { const n = dayOff(d, d0); return zShort(d) + (n ? ` +${n}` : ''); };
+  // Every point the app knows, in one list. A datalist gives native type-ahead for free and
+  // still accepts anything typed, so a planner is never blocked by a place we have not heard
+  // of — they type it and, if it needs a position, the row says so.
+  function pointOptions(){
+    const seen=new Map();
+    const add=(label,sub)=>{ const k=label.trim(); if(k && !seen.has(k)) seen.set(k,sub||''); };
+    POINTS.forEach(x=>add(x,'common'));
+    AIRFIELDS.forEach(x=>add(x,'airfield'));
+    Object.keys(AIRFIELD_POS).forEach(k=>add(k,'airfield'));
+    Object.keys(NAVAID_POS).forEach(k=>add(k,'navaid'));
+    Object.entries(getWaypoints()).forEach(([k,w])=>add(k,`saved by ${w.by||'—'}`));
+    return [...seen.entries()];
+  }
+  function renderPointList(){
+    const dl=document.getElementById('ptlist'); if(!dl) return;
+    dl.innerHTML = pointOptions().map(([v,sub])=>`<option value="${hesc(v)}">${hesc(sub)}</option>`).join('');
+  }
+  // "Korat (VTUN)" in a Point cell means VTUN in the ICAO cell. Typing either should work.
+  function splitPoint(v){
+    const m=String(v||'').match(/^(.*?)\s*\(([A-Z0-9]{3,4})\)\s*$/i);
+    return m ? { pt:m[1].trim().toUpperCase(), fir:m[2].toUpperCase() } : { pt:String(v||'').toUpperCase(), fir:null };
+  }
   function renderLegs(){
     const rows = itinerary();
     const d0 = parseDMY(fld('f_date'));
     document.getElementById('legrows').innerHTML = rows.map((r,i) => `
       <div class="legrow">
-        <input value="${hesc(r.pt)}"  oninput="setLeg(${i},'pt',this.value)"  placeholder="Point">
+        <input value="${hesc(r.pt)}" list="ptlist" oninput="setPoint(${i},this.value)" placeholder="Point or ICAO — type to search">
         ${posOf(r) ? `<input value="${hesc(r.fir)}" oninput="setLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">`
           : `<button type="button" class="needpos" onclick="askPosition(${i})" title="No position known for this point — click to enter one">set position</button>`}
         <input value="${hesc(r.leg)}" oninput="setLeg(${i},'leg',this.value)"
@@ -1237,7 +1329,7 @@
     const d0=parseDMY(ov.date);
     rows.innerHTML = out.map((r,i)=>`
       <div class="legrow">
-        <input value="${hesc(r.pt)}"  oninput="setRetLeg(${i},'pt',this.value)"  placeholder="Point">
+        <input value="${hesc(r.pt)}" list="ptlist" oninput="setRetPoint(${i},this.value)" placeholder="Point or ICAO — type to search">
         <input value="${hesc(r.fir)}" oninput="setRetLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">
         <input value="${hesc(r.leg)}" oninput="setRetLeg(${i},'leg',this.value)"
                placeholder="${i ? (r.autoMin ? r.autoMin+'' : 'min') : '—'}" ${i?'':'disabled'}
@@ -1362,6 +1454,10 @@
   }
 
   function setLeg(i,k,v){ if(LEGS[i]){ LEGS[i][k]=v; renderLegs(); } }
+  function setPoint(i,v){ if(!LEGS[i]) return; const d=splitPoint(v);
+    LEGS[i].pt=d.pt; if(d.fir) LEGS[i].fir=d.fir; renderLegs(); }
+  function setRetPoint(i,v){ if(!RET.legs[i]) return; const d=splitPoint(v);
+    RET.legs[i].pt=d.pt; if(d.fir) RET.legs[i].fir=d.fir; renderRetLegs(); checkDrift(); }
   function rmLeg(i){ if(LEGS.length>2){ LEGS.splice(i,1); renderLegs(); } else toast("An itinerary needs a departure and a destination"); }
   function addLeg(){ LEGS.splice(LEGS.length-1, 0, {pt:"",fir:"",leg:"",gnd:"",rem:"Enter FIR"}); renderLegs(); }
 
@@ -1859,7 +1955,7 @@
     const pl=document.getElementById('pocline'); if(pl) pl.textContent='Point of contact: '+(POC.name||'—')+(POC.tel?' · '+POC.tel:'');
   }
   // ---- settings (persisted reference data) ----
-  function applySettings(s){ if(s.fleet)FLEET=s.fleet; if(s.airfields)AIRFIELDS=s.airfields; if(s.purposes)PURPOSES=s.purposes; if(s.poc)POC=s.poc; }
+  function applySettings(s){ if(s.fleet)FLEET=s.fleet; if(s.airfields)AIRFIELDS=s.airfields; if(s.purposes)PURPOSES=s.purposes; if(s.points)POINTS=s.points; if(s.poc)POC=s.poc; }
   function loadSettings(){ try{ const s=JSON.parse(localStorage.getItem('dc_settings')||'null'); if(s) applySettings(s); }catch(e){} }
   function fleetToText(){ return [...FLEET.frequent,...FLEET.rest].map(a=>a.type+" | "+a.tails.join(", ")).join("\n"); }
   function openSettings(){
@@ -1867,6 +1963,7 @@
     document.getElementById('set_fleet').value=fleetToText();
     document.getElementById('set_air').value=AIRFIELDS.join("\n");
     document.getElementById('set_pur').value=PURPOSES.join("\n");
+    document.getElementById('set_pts').value=POINTS.join("\n");
     document.getElementById('set_pocname').value=POC.name||''; document.getElementById('set_poctel').value=POC.tel||''; document.getElementById('set_pocemail').value=POC.email||'';
     document.getElementById('setmodal').classList.add('show');
   }
@@ -1939,15 +2036,16 @@
     FLEET=parseFleet(document.getElementById('set_fleet').value);
     AIRFIELDS=document.getElementById('set_air').value.split("\n").map(s=>s.trim()).filter(Boolean);
     PURPOSES=document.getElementById('set_pur').value.split("\n").map(s=>s.trim()).filter(Boolean);
+    POINTS=document.getElementById('set_pts').value.split("\n").map(s=>s.trim()).filter(Boolean);
     POC={name:document.getElementById('set_pocname').value.trim(), tel:document.getElementById('set_poctel').value.trim(), email:document.getElementById('set_pocemail').value.trim()};
     ME={ name:(document.getElementById('set_myname').value||'').trim(), unit:(document.getElementById('set_myunit').value||'').trim() };
     persistIdentity(); paintIdentity();
-    try{ localStorage.setItem('dc_settings', JSON.stringify({fleet:FLEET,airfields:AIRFIELDS,purposes:PURPOSES,poc:POC})); }catch(e){}
-    initFleet(); renderRefData(); closeSettings(); toast("Settings saved");
+    try{ localStorage.setItem('dc_settings', JSON.stringify({fleet:FLEET,airfields:AIRFIELDS,purposes:PURPOSES,points:POINTS,poc:POC})); }catch(e){}
+    initFleet(); renderRefData(); renderPointList(); closeSettings(); toast("Settings saved");
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); loadIdentity(); loadFreshness(); renderRoutes(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
+  loadSettings(); loadIdentity(); loadFreshness(); renderRoutes(); renderPointList(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
   if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>
