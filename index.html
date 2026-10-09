@@ -303,6 +303,13 @@
   .legrow input{height:31px;border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:0 8px;
     font-family:var(--mono);font-size:12px;color:var(--ink);width:100%}
   .legrow input:focus{outline:none;border-color:var(--navy)}
+  .legrow .needpos{height:31px;border:1px dashed var(--amber);border-radius:7px;background:transparent;
+    color:var(--amber);font-size:11px;font-weight:600;cursor:pointer;width:100%;padding:0 4px}
+  .legrow .needpos:hover{background:color-mix(in srgb,var(--amber) 10%,transparent)}
+  .f label .mini{margin-left:7px;border:1px solid var(--line);border-radius:6px;background:var(--paper);
+    color:var(--ink-soft);font-size:10px;font-weight:600;height:19px;padding:0 7px;cursor:pointer;
+    text-transform:none;letter-spacing:0}
+  .f label .mini:hover{border-color:var(--navy);color:var(--ink)}
   /* a leg the app worked out itself, shown as a placeholder the planner can type over */
   .legrow input.auto::placeholder{color:var(--blu);opacity:1;font-style:italic}
   /* a leg with nothing entered and nothing derivable: it is contributing zero minutes */
@@ -444,7 +451,7 @@
             <div class="f"><label>To</label><select id="f_to"><option>Udon Thani (VTUD)</option><option>King Khalid (OERK)</option><option>Darwin (YPDN)</option></select></div>
             <div class="f"><label>Date</label><input id="f_date" value="08 APR 26"></div>
             <div class="f"><label>Purpose</label><select id="f_purpose"><option>Exercise deployment</option><option>Air recovery</option><option>HADR response</option><option>Training</option><option>VIP</option></select></div>
-            <div class="f wide"><label>Route (ATS)</label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
+            <div class="f wide"><label>Route (ATS) <button type="button" class="mini" onclick="routeToItinerary()" title="Read this route and lay out the itinerary">Build itinerary</button></label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
             <div class="f"><label>Off blocks (UTC) <span class="sub2">HHMM</span></label><input id="f_etd" value="2300" maxlength="4" inputmode="numeric" placeholder="2300"></div>
             <div class="f"><label>DCR number <span class="sub2">as your registry issued it</span></label><input id="f_dcr" placeholder="e.g. 042-26 (1)"></div>
             <div class="f"><label>Ground speed <span class="sub2">kt — used when a leg is given in nm</span></label><input id="f_gs" value="440" inputmode="numeric" placeholder="440"></div>
@@ -1020,14 +1027,65 @@
   // 2026-10-08. Bundled rather than fetched: the app runs from file:// on a machine with no
   // network, and "nothing leaves this machine" is the point of it. Refreshing this table means
   // re-reading SkyVector and editing here, which is a deliberate, dated act.
+  // Airfields: decimal degrees converted from SkyVector's published coordinates, read
+  // 2026-10-08/09. Exact to the airport reference point.
   const AIRFIELD_POS = {
     WSSS: [  1.359167, 103.989333],   // Changi
     WSAP: [  1.355667, 103.902833],   // Paya Lebar
     WSAT: [  1.387667, 103.708333],   // Tengah
     VTUD: [ 17.386500, 102.788167],   // Udon Thani
+    VTBS: [ 13.685833, 100.748833],   // Bangkok Suvarnabhumi
     OERK: [ 24.962833,  46.708000],   // Riyadh King Khaled
     YPDN: [-12.414667, 130.876667],   // Darwin
   };
+  // Navaids: DERIVED, not published. SkyVector's navaid lookup is broken (404s even for its
+  // own documented example), but each airport page lists nearby navaids with the radial the
+  // airport sits on and the distance. Projecting back from the airport along the reciprocal
+  // recovers the navaid. Where a navaid appears on several airport pages the independent
+  // fixes agree to under 0.3 nm, which is what makes this trustworthy rather than a guess.
+  // Treat these as good to about a mile — ten seconds of flying, immaterial to a clearance,
+  // but they are not survey positions and should not be used as if they were.
+  const NAVAID_POS = {
+    VTK: [ 1.41579, 104.02170], PLA: [ 1.37438, 103.91438], PU:  [ 1.42275, 103.93297],
+    SJ:  [ 1.22276, 103.85538], TNG: [ 1.39344, 103.71167],
+    UDN: [17.38488, 102.77431], VTN: [18.01083, 102.54917], KKN: [16.47559, 102.77159],
+    LOY: [17.45477, 101.72225], BKK: [13.89453, 100.59826], SVB: [13.65929, 100.73110],
+    DAR: [-12.41283, 130.88322], DN: [-12.42192, 130.90645], KSA: [24.97845, 46.66741],
+  };
+  // Anything else the desk flies past gets entered once and kept. That table travels with the
+  // library export, so a position checked by one planner serves everyone.
+  function getWaypoints(){ try{ return JSON.parse(localStorage.getItem('dc_waypoints')||'{}'); }catch(e){ return {}; } }
+  function putWaypoints(w){ try{ localStorage.setItem('dc_waypoints', JSON.stringify(w)); }catch(e){} }
+  // "Changi (WSSS)" in the airfield list means CHANGI should resolve as readily as WSSS does.
+  function icaoForName(name){
+    const n=(name||'').trim().toUpperCase(); if(!n) return null;
+    for(const a of AIRFIELDS){
+      const m=String(a).match(/^(.*?)\s*\(([A-Z0-9]{3,4})\)\s*$/i);
+      if(m && m[1].trim().toUpperCase() === n) return m[2].toUpperCase();
+    }
+    return null;
+  }
+  function lookupPoint(id){
+    const k=(id||'').trim().toUpperCase(); if(!k) return null;
+    if(AIRFIELD_POS[k]) return { pos:AIRFIELD_POS[k], src:'airfield' };
+    const byName = icaoForName(k);
+    if(byName && AIRFIELD_POS[byName]) return { pos:AIRFIELD_POS[byName], src:'airfield', icao:byName };
+    if(NAVAID_POS[k])   return { pos:NAVAID_POS[k],   src:'navaid (derived)' };
+    const w=getWaypoints()[k];
+    return w ? { pos:[w.lat,w.lon], src:`entered by ${w.by||'—'} ${w.at||''}`.trim() } : null;
+  }
+  // Accepts what a planner actually has to hand: decimal, or degrees-and-decimal-minutes in
+  // the form the AIP and SkyVector both print.
+  function parsePos(txt){
+    const t=(txt||'').trim().toUpperCase().replace(/[°'"]/g,' ').replace(/,/g,' ').replace(/\s+/g,' ');
+    let m=t.match(/^(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/);
+    if(m){ const la=+m[1], lo=+m[2];
+      return (Math.abs(la)<=90 && Math.abs(lo)<=180) ? [la,lo] : null; }
+    m=t.match(/^([NS])\s*(\d+)\s+(\d+(?:\.\d+)?)\s*([EW])\s*(\d+)\s+(\d+(?:\.\d+)?)$/);
+    if(m){ const la=(+m[2]+ +m[3]/60)*(m[1]==='S'?-1:1), lo=(+m[5]+ +m[6]/60)*(m[4]==='W'?-1:1);
+      return (Math.abs(la)<=90 && Math.abs(lo)<=180) ? [+la.toFixed(5), +lo.toFixed(5)] : null; }
+    return null;
+  }
   // Great-circle distance in nautical miles. Haversine is plenty here: a clearance wants the
   // leg to the nearest few minutes, not a flight-planning answer, and the difference from a
   // proper geodesic over these distances is well under that.
@@ -1038,7 +1096,13 @@
     return 2*R*Math.asin(Math.min(1, Math.sqrt(h)));
   }
   // A point resolves to a position if its FIR/ICAO cell names an airfield we hold.
-  function posOf(leg){ const k=(leg.fir||'').trim().toUpperCase(); return AIRFIELD_POS[k]||null; }
+  // A row resolves by its FIR/ICAO cell first, then by the point's own name — an enroute fix
+  // is written in the Point column and has no ICAO beside it.
+  function posOf(leg){
+    const a=lookupPoint(leg.fir); if(a) return a.pos;
+    const b=lookupPoint(leg.pt);  if(b) return b.pos;
+    return null;
+  }
 
   // ---- itinerary: points, leg times, and the clock that runs through them ----------------
   // Every leg is minutes. A leg given in nautical miles is converted at the entered ground
@@ -1116,7 +1180,8 @@
     document.getElementById('legrows').innerHTML = rows.map((r,i) => `
       <div class="legrow">
         <input value="${hesc(r.pt)}"  oninput="setLeg(${i},'pt',this.value)"  placeholder="Point">
-        <input value="${hesc(r.fir)}" oninput="setLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">
+        ${posOf(r) ? `<input value="${hesc(r.fir)}" oninput="setLeg(${i},'fir',this.value)" placeholder="FIR/ICAO">`
+          : `<button type="button" class="needpos" onclick="askPosition(${i})" title="No position known for this point — click to enter one">set position</button>`}
         <input value="${hesc(r.leg)}" oninput="setLeg(${i},'leg',this.value)"
                placeholder="${i ? (r.autoMin ? r.autoMin+'' : 'min') : '—'}" ${i?'':'disabled'}
                class="${r.unset ? 'unset' : (r.autoMin && !String(r.leg||'').trim() ? 'auto' : '')}"
@@ -1197,6 +1262,62 @@
   function setRetLeg(i,k,v){ if(RET.legs[i]){ RET.legs[i][k]=v; renderRetLegs(); checkDrift(); } }
   function rmRetLeg(i){ if(RET.legs.length>2){ RET.legs.splice(i,1); renderRetLegs(); } else toast("A leg needs a departure and a destination"); }
   function addRetLeg(){ RET.legs.splice(RET.legs.length-1,0,{pt:'',fir:'',leg:'',gnd:'',rem:'Enter FIR'}); renderRetLegs(); }
+
+  // ---- reading an ATS route ---------------------------------------------------------------
+  // "WSSS DCT SJ DCT SALAX N563 REXOD L883 KITUB DCT VTUD" is points interleaved with the
+  // airways between them. DCT means direct and an airway designator is a letter or two
+  // followed by digits; neither is a place, so both are dropped. Separators vary because
+  // planners paste from wherever the route came from.
+  const AIRWAY_RE = /^[A-Z]{1,2}\d{1,4}[A-Z]?$/;         // N563, L883, Y517, A576, UL123
+  const NOISE = new Set(['DCT','SID','STAR','IFR','VFR','GPS','RNAV','SIDSTAR']);
+  function parseRouteString(txt){
+    const raw = String(txt||'').toUpperCase().trim();
+    if(!raw) return [];
+    // Two shapes arrive here and they split differently. A dashed route is written in place
+    // names, which have spaces in them ("CHANGI — UDON THANI"), so only the dashes separate.
+    // A bare ATS route is identifiers, where whitespace is the separator.
+    const dashed = /[—–]|->|\s-\s/.test(raw);
+    const parts = dashed ? raw.split(/[—–]|->|\s-\s/) : raw.split(/[\s,>]+/);
+    return parts
+      .map(t => t.replace(/[^A-Z0-9 ]/g,'').replace(/\s+/g,' ').trim())
+      .filter(t => t && !NOISE.has(t) && !AIRWAY_RE.test(t));
+  }
+  function routeToItinerary(){
+    const pts = parseRouteString(fld('f_route'));
+    if(pts.length < 2){ toast("Type a route first — points separated by spaces or dashes"); return; }
+    if(LEGS.some(l => (l.leg||'').trim() || (l.gnd||'').trim())){
+      if(!confirm(`Lay out ${pts.length} points from the route?\n\nThe leg and ground times already entered will be cleared.`)) return;
+    }
+    LEGS = pts.map((pt,i) => {
+      const hit = lookupPoint(pt);
+      return { pt, fir: (hit && hit.src === 'airfield') ? (hit.icao || pt) : '', leg:'', gnd:'',
+               rem: i===0 ? 'Departure' : (i===pts.length-1 ? 'Destination' : '') };
+    });
+    renderLegs();
+    const unknown = pts.filter(pt => !lookupPoint(pt));
+    toast(unknown.length
+      ? `${pts.length} points laid out · ${unknown.length} need a position: ${unknown.join(', ')}`
+      : `${pts.length} points laid out — every leg timed from its distance`);
+  }
+  // A point the table does not know blocks its leg from being timed, so offer to learn it
+  // rather than leaving the planner to work out why nothing computed.
+  function askPosition(idx){
+    const leg = LEGS[idx]; if(!leg) return;
+    const id = (leg.fir || leg.pt || '').trim().toUpperCase();
+    if(!id){ toast("Name the point first"); return; }
+    const who = (ME.name||'').trim();
+    if(!who){ toast("Set who you are first — a position is kept with the name that entered it"); return; }
+    const raw = prompt(
+      `Position for ${id}\n\nFrom the AIP or the chart. Either form:\n`
+      + `  N01 21.5 E103 59.4\n  1.3592 103.9893`, '');
+    if(raw === null) return;
+    const pos = parsePos(raw);
+    if(!pos){ toast(`Could not read "${raw}" as a position`); return; }
+    const w = getWaypoints();
+    w[id] = { lat:pos[0], lon:pos[1], by:who, at:new Date().toISOString().slice(0,10) };
+    putWaypoints(w); renderLegs();
+    toast(`${id} saved at ${pos[0].toFixed(4)}, ${pos[1].toFixed(4)} — it will be remembered`);
+  }
 
   // ---- route library -----------------------------------------------------------------
   // Routes are stored apart from flights on purpose. A flight is a one-off — this date, this
@@ -1750,7 +1871,7 @@
     document.getElementById('setmodal').classList.add('show');
   }
   // ---- the library: everything this machine holds, in one portable file ----------------
-  const LIB_KEYS = { dc_settings:'reference data', dc_routes:'routes',
+  const LIB_KEYS = { dc_settings:'reference data', dc_routes:'routes', dc_waypoints:'waypoint positions',
                      dc_presets:'saved flights', dc_freshness:'template verifications' };
   function libSnapshot(){
     const out = { kind:'diploclear-library', version:1,
@@ -1766,6 +1887,7 @@
     const n = o => o && typeof o==='object' ? Object.keys(o).length : 0;
     el.textContent = [
       `${n(d.dc_routes)} route${n(d.dc_routes)===1?'':'s'}`,
+      `${n(d.dc_waypoints)} waypoint${n(d.dc_waypoints)===1?'':'s'}`,
       `${n(d.dc_presets)} saved flight${n(d.dc_presets)===1?'':'s'}`,
       `${n(d.dc_freshness)} recorded verification${n(d.dc_freshness)===1?'':'s'}`,
       d.dc_settings ? 'reference data edited' : 'reference data at defaults',
@@ -1791,7 +1913,7 @@
       const when = (snap.exported||'').slice(0,10), who = snap.by ? ` by ${snap.by}` : '';
       // Importing REPLACES. Say exactly what is coming in and what is going out first.
       const msg = `Import the library exported ${when||'(undated)'}${who}?\n\n`
-        + `Coming in:\n  ${n(d.dc_routes)} routes\n  ${n(d.dc_presets)} saved flights\n`
+        + `Coming in:\n  ${n(d.dc_routes)} routes\n  ${n(d.dc_waypoints)} waypoints\n  ${n(d.dc_presets)} saved flights\n`
         + `  ${n(d.dc_freshness)} verifications\n  ${d.dc_settings?'reference data':'no reference data'}\n\n`
         + `This REPLACES what is on this machine:\n`
         + `  ${Object.keys(getRoutes()).length} routes, ${Object.keys(getPresets()).length} saved flights.`;

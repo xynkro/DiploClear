@@ -42,6 +42,33 @@ off-blocks, captain and crew — and Generate produces both, foldered `OUTBOUND/
 Several airframes on one request each get their own commander, and the crew list carries all
 of them, because a form naming three tails and one captain is wrong.
 
+### Planning a route
+Paste an ATS route into **Route (ATS)** and press **Build itinerary**. `DCT` and airway
+designators (`N563`, `L883`, `Y517`) are route grammar rather than places, so they are
+dropped; what is left becomes the itinerary. Both shapes parse: identifiers separated by
+spaces (`WSSS DCT SJ N563 VTBS`) and place names separated by dashes
+(`CHANGI — TIDAR — UDON THANI`), where a name resolves through the airfield list to its ICAO.
+
+Each point then needs a position before its leg can be timed. Three sources, in order:
+
+| Source | Accuracy |
+|---|---|
+| Bundled airfields | exact — SkyVector's published coordinates |
+| Bundled navaids | **derived**, good to about a mile |
+| Learned waypoints | whatever the planner entered, kept with their name and the date |
+
+The navaids are derived because SkyVector's navaid lookup is broken — it returns 404 even for
+its own documented example. Each airport page does list nearby navaids with the radial the
+airport sits on and the distance, so projecting back along the reciprocal recovers the
+navaid. Where one appears on several airport pages the independent fixes agree to under
+0.3 nm, and the gate re-checks every derived position against its published range. They are
+good enough for a clearance time and are **not** survey positions.
+
+Anything else gets a **set position** button on its row. Enter it once, from the AIP or the
+chart, in either `N01 21.5 E103 59.4` or `1.3592 103.9893`, and it is kept with the name of
+whoever entered it. Learned waypoints travel with the library export, so a position one
+planner checked serves the whole desk.
+
 ### Routes, saved flights, and the library
 A **route** is the part that repeats — the points, their FIR crossings, the leg timings and
 the ground speed. It is stored apart from a flight, so recalling one refills the itinerary
@@ -74,13 +101,14 @@ The packet must stay uncompressed for the runtime substitution to be safe; the e
 outright if it is not plain XML.
 
 ### Gates
-`node tools/xfa_flatten/validate_all21.js` runs eight, each with a positive control so a
+`node tools/xfa_flatten/validate_all21.js` runs nine, each with a positive control so a
 blind check cannot pass: 21-of-21 generation, ARCHIVE, FROZEN-MISSION, NO-BAKED-DATES (no
 template may carry another mission's dates or times), NO-AUTHOR-METADATA (docProps must name
 nobody), AUSTRALIA-LIVE-XFA, AIRFIELD-POSITIONS (distances checked against SkyVector's own
 published figures), REFERENCE-AND-FRESHNESS (no fabricated clearance reference, and
-verifications must be recordable), and LIBRARY-ROUNDTRIP (anything a saved flight captures
-must be restored, and the library must stay portable).
+verifications must be recordable), LIBRARY-ROUNDTRIP (anything a saved flight captures
+must be restored, and the library must stay portable), and ROUTE-AND-NAVAIDS (airways
+stripped, points kept, every derived navaid still matching its published range).
 
 ### Hard rule: format-in = format-out
 The host gives a `.docx`, they get a `.docx` back. The master template **is** the host

@@ -144,6 +144,71 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
     ? "    control: a hardcoded dcr_no IS caught" : "    !! CONTROL FAILED");
 })();
 
+// ---- invariant: the route parser and every bundled position -----------------------------
+// An ATS route is points interleaved with airways. Letting an airway designator through as a
+// place, or dropping a real point, silently reshapes the itinerary and therefore the FIR
+// times a host nation is given. The navaid positions are DERIVED (projected back from the
+// airport pages, because SkyVector's navaid lookup 404s), so they are checked against each
+// other and against the airports they were derived from.
+(() => {
+  const fails = [];
+  const AIRWAY_RE = /^[A-Z]{1,2}\d{1,4}[A-Z]?$/;
+  const NOISE = new Set(['DCT','SID','STAR','IFR','VFR','GPS','RNAV','SIDSTAR']);
+  const parse = txt => {
+    const raw = String(txt||'').toUpperCase().trim(); if(!raw) return [];
+    const dashed = /[—–]|->|\s-\s/.test(raw);
+    const parts = dashed ? raw.split(/[—–]|->|\s-\s/) : raw.split(/[\s,>]+/);
+    return parts.map(t=>t.replace(/[^A-Z0-9 ]/g,'').replace(/\s+/g,' ').trim())
+                .filter(t=>t && !NOISE.has(t) && !AIRWAY_RE.test(t));
+  };
+  const CASES = [
+    ['WSSS DCT SJ DCT SALAX N563 REXOD L883 KITUB Y517 TOTEB DCT OERK',
+     ['WSSS','SJ','SALAX','REXOD','KITUB','TOTEB','OERK']],
+    ['CHANGI — TIDAR — UDON THANI', ['CHANGI','TIDAR','UDON THANI']],
+    ['WSSS SJ VTBS', ['WSSS','SJ','VTBS']],
+    ['OERK DCT TOTEB DCT NAGBU Y214 RAPMA DCT DAPOL L692 GISKA',
+     ['OERK','TOTEB','NAGBU','RAPMA','DAPOL','GISKA']],
+  ];
+  for(const [route, want] of CASES){
+    const got = parse(route);
+    if(got.join('|') !== want.join('|'))
+      fails.push(`route parsed wrong:\n        in   ${route}\n        want ${want.join(' ')}\n        got  ${got.join(' ')}`);
+  }
+  // the app must use the same rules this check just exercised
+  if(!/const AIRWAY_RE\s*=\s*\/\^\[A-Z\]\{1,2\}/.test(html)) fails.push("the app's airway pattern changed — this check no longer mirrors it");
+  if(!/function routeToItinerary\(/.test(html)) fails.push("no way to build an itinerary from a route");
+  if(!/function askPosition\(/.test(html))      fails.push("no way to teach an unknown point");
+  if(!/localStorage\.setItem\('dc_waypoints'/.test(html)) fails.push("learned positions are not kept");
+  if(!/dc_waypoints:/.test(html))               fails.push("waypoints do not travel with the library");
+
+  // derived navaids must still sit near the airport they came from
+  const num = o => Object.fromEntries([...o.matchAll(/(\w+)\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/g)]
+    .map(m => [m[1], [parseFloat(m[2]), parseFloat(m[3])]]));
+  const AP = num((html.match(/const AIRFIELD_POS = \{([\s\S]*?)\};/)||[,''])[1]);
+  const NV = num((html.match(/const NAVAID_POS = \{([\s\S]*?)\};/)||[,''])[1]);
+  const gcNm = (a,b)=>{ const R=3440.065, r=Math.PI/180;
+    const dla=(b[0]-a[0])*r, dlo=(b[1]-a[1])*r;
+    const h2=Math.sin(dla/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dlo/2)**2;
+    return 2*R*Math.asin(Math.min(1,Math.sqrt(h2))); };
+  // [navaid, airport, published range nm] straight off the SkyVector airport pages
+  const NEAR = [['VTK','WSSS',3.9],['PLA','WSSS',4.6],['PU','WSSS',5.1],['SJ','WSSS',11.5],
+                ['TNG','WSAT',0.4],['UDN','VTUD',0.8],['VTN','VTUD',39.9],['KKN','VTUD',54.7],
+                ['DAR','YPDN',0.4],['KSA','OERK',2.4],['SVB','VTBS',1.9],['BKK','VTBS',15.3]];
+  let worst = 0;
+  for(const [nav, ap, rng] of NEAR){
+    if(!NV[nav] || !AP[ap]){ fails.push(`missing position for ${!NV[nav]?nav:ap}`); continue; }
+    const d = Math.abs(gcNm(NV[nav], AP[ap]) - rng);
+    worst = Math.max(worst, d);
+    if(d > 0.6) fails.push(`${nav} is ${d.toFixed(2)} nm off its published range from ${ap}`);
+  }
+  console.log(`\nROUTE-AND-NAVAIDS  routes=${CASES.length}  navaids=${NEAR.length}  worst drift=${worst.toFixed(2)} nm  problems=${fails.length}`);
+  console.log(fails.length ? "==> ROUTE-AND-NAVAIDS FAILED\n    - " + fails.join("\n    - ")
+                           : "==> ROUTE-AND-NAVAIDS OK — airways stripped, points kept, derived navaids match their published ranges");
+  const ctl = parse('WSSS N563 VTBS');
+  console.log(!ctl.includes('N563') && ctl.length===2 ? "    control: an airway designator IS stripped, a point IS kept"
+                                                     : "    !! CONTROL FAILED — the parser check is blind");
+})();
+
 // ---- invariant: bundled airfield positions must still be right -------------------------
 // Coordinates were transcribed by hand from SkyVector, so a digit can slip without anything
 // looking wrong — the itinerary would simply produce confident, wrong times. These check the
