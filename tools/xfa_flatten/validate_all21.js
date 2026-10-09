@@ -70,6 +70,33 @@ async function genPdf(k){ const {PDFDocument,rgb,StandardFonts}=PDFLib; const pd
  fs.writeFileSync("/tmp/DiploClear_all21.zip", out);
 })();
 
+// ---- invariant: no fabricated clearance reference, and freshness must be recordable ----
+// dcr_no shipped hardcoded to the sample mission's "042-26 (1)", so every form of every
+// mission carried the same reference — the number the host tracks the request by. The stamp
+// was separately invented from the list position. And the freshness table claimed each
+// template was "last verified by <owner> on <date>" while offering no way to record a check.
+(() => {
+  const fails = [];
+  if(/dcr_no\s*:\s*["'][^"']*\d/.test(html))
+    fails.push("dcr_no is hardcoded to a literal reference — it must come from the entered field");
+  if(!/F\('f_dcr','dcr'\)/.test(html))        fails.push("dcr_no does not read the DCR field");
+  if(/DCR0\$\{\s*42\s*\+\s*i\s*\}/.test(html)) fails.push("the stamp still invents a number from the list position");
+  if(!/id="f_dcr"/.test(html))                fails.push("no DCR number field on the form");
+  if(!/id="r_dcr"/.test(html))                fails.push("the return leg has no DCR field of its own");
+  if(!/function paintNoRef\(/.test(html))     fails.push("nothing warns when a request has no reference");
+  for(const [re, what] of [[/function loadFreshness\(/, "freshness persistence"],
+                           [/function recordVerification\(/, "a way to record a verification"],
+                           [/localStorage\.setItem\('dc_freshness'/, "freshness saved locally"],
+                           [/FRESH_LOCAL\[iso\]/, "freshness() consulting the recorded value"]])
+    if(!re.test(html)) fails.push(`missing ${what}`);
+  console.log(`\nREFERENCE-AND-FRESHNESS  checks=11  problems=${fails.length}`);
+  console.log(fails.length ? "==> REFERENCE-AND-FRESHNESS FAILED\n    - " + fails.join("\n    - ")
+                           : "==> REFERENCE-AND-FRESHNESS OK — reference comes from the planner, freshness is recordable");
+  // control: a hardcoded reference must be caught
+  console.log(/dcr_no\s*:\s*["'][^"']*\d/.test(`dcr_no:"042-26 (1)",`)
+    ? "    control: a hardcoded dcr_no IS caught" : "    !! CONTROL FAILED");
+})();
+
 // ---- invariant: bundled airfield positions must still be right -------------------------
 // Coordinates were transcribed by hand from SkyVector, so a digit can slip without anything
 // looking wrong — the itinerary would simply produce confident, wrong times. These check the

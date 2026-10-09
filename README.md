@@ -60,11 +60,12 @@ The packet must stay uncompressed for the runtime substitution to be safe; the e
 outright if it is not plain XML.
 
 ### Gates
-`node tools/xfa_flatten/validate_all21.js` runs six, each with a positive control so a blind
-check cannot pass: 21-of-21 generation, ARCHIVE, FROZEN-MISSION, NO-BAKED-DATES (no template
-may carry another mission's dates or times), NO-AUTHOR-METADATA (docProps must name nobody),
-AUSTRALIA-LIVE-XFA, and AIRFIELD-POSITIONS (distances checked against SkyVector's own
-published figures).
+`node tools/xfa_flatten/validate_all21.js` runs seven, each with a positive control so a
+blind check cannot pass: 21-of-21 generation, ARCHIVE, FROZEN-MISSION, NO-BAKED-DATES (no
+template may carry another mission's dates or times), NO-AUTHOR-METADATA (docProps must name
+nobody), AUSTRALIA-LIVE-XFA, AIRFIELD-POSITIONS (distances checked against SkyVector's own
+published figures), and REFERENCE-AND-FRESHNESS (no fabricated clearance reference, and
+verifications must be recordable).
 
 ### Hard rule: format-in = format-out
 The host gives a `.docx`, they get a `.docx` back. The master template **is** the host
@@ -93,7 +94,16 @@ so the app is built to be checkable rather than merely quick:
 
 - **Freshness** — every template is stamped with when it was last verified against the host
   nation's current form, and by whom. The indicator degrades on its own: green under 6
-  months, amber under 18, red beyond. Stale beats silently-wrong.
+  months, amber under 18, red beyond. Stale beats silently-wrong. A verification is
+  **recordable**: the verify panel carries *"I checked it against the host's current form"*,
+  which stamps today's date and the signed-in name over the bundled default and keeps it on
+  the machine. It refuses if nobody is signed in, because an unattributed verification is
+  worth nothing.
+- **Clearance reference** — the `DCR` number the host tracks the request by is entered, not
+  generated. It was hardcoded to the sample mission's `042-26 (1)`, so every form of every
+  mission carried the same reference, and the stamp separately counted one off the list
+  position. Left blank the forms read `TBC` and a notice says so. A return leg carries its
+  own, because it is a separate request.
 - **Verify & sign** — each generated form opens an input-to-output table showing exactly
   which mission value filled which field, then takes a **named** human sign-off. The form is
   marked *not reviewed* until a person puts their name to it.

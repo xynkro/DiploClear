@@ -163,6 +163,9 @@
     border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 11%,var(--paper));
     color:var(--ink);font-size:13.5px;line-height:1.4}
   .drift[hidden]{display:none}
+  /* missing clearance reference: a statement of fact, not an action prompt */
+  .drift.noref{border-color:var(--blu);background:color-mix(in srgb,var(--blu) 9%,var(--paper))}
+  .drift.noref svg{color:var(--blu)}
   .drift svg{flex:none;color:var(--amber)}
   .drift span{flex:1}
   .drift button{flex:none;border:1px solid var(--amber);border-radius:8px;background:var(--amber);color:#1b1402;
@@ -307,6 +310,9 @@
   .legrow .rm{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:5px}
   .legrow .rm:hover{color:var(--blocked);background:var(--panel)}
   .itin-ft{padding:8px 12px 10px;font-size:11.5px;color:var(--ink-faint);border-top:1px solid var(--line);font-family:var(--mono)}
+  .reverify{display:block;margin-top:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);
+    border-radius:7px;height:28px;padding:0 11px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .reverify:hover{border-color:var(--navy);color:var(--ink)}
   .vfdone{font-size:12.5px;color:var(--cleared);margin-top:9px;font-weight:600}
   .field label .hint{text-transform:none;letter-spacing:0;color:var(--ink-faint);font-weight:400;margin-left:6px;font-size:10.5px}
   .idwho{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--paper)}
@@ -434,6 +440,7 @@
             <div class="f"><label>Purpose</label><select id="f_purpose"><option>Exercise deployment</option><option>Air recovery</option><option>HADR response</option><option>Training</option><option>VIP</option></select></div>
             <div class="f wide"><label>Route (ATS)</label><input id="f_route" value="CHANGI — TIDAR — UDON THANI" style="letter-spacing:.04em"></div>
             <div class="f"><label>Off blocks (UTC) <span class="sub2">HHMM</span></label><input id="f_etd" value="2300" maxlength="4" inputmode="numeric" placeholder="2300"></div>
+            <div class="f"><label>DCR number <span class="sub2">as your registry issued it</span></label><input id="f_dcr" placeholder="e.g. 042-26 (1)"></div>
             <div class="f"><label>Ground speed <span class="sub2">kt — used when a leg is given in nm</span></label><input id="f_gs" value="440" inputmode="numeric" placeholder="440"></div>
           </div>
 
@@ -473,6 +480,7 @@
               <div class="f"><label>Off blocks (UTC)</label><input id="r_etd" maxlength="4" inputmode="numeric" placeholder="0600"></div>
               <div class="f"><label>Captain <span class="sub2">if different</span></label><input id="r_capt" placeholder="same as outbound"></div>
               <div class="f"><label>Crew <span class="sub2">if different</span></label><input id="r_crew" placeholder="same as outbound"></div>
+              <div class="f"><label>DCR number <span class="sub2">its own — this is a separate request</span></label><input id="r_dcr" placeholder="e.g. 043-26 (1)"></div>
             </div>
             <div class="itin-grid-hd"><span>Point</span><span>FIR / ICAO</span><span>Leg</span><span>Ground</span><span>ETA</span><span>ETD</span><span></span></div>
             <div id="retrows"></div>
@@ -519,6 +527,10 @@
       <button class="dlall" id="dlallbtn" style="display:none" onclick="downloadAll()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg><span id="dlalllbl">Download all</span></button></div>
     <!-- Raised when the flight details change after a batch was generated. The forms below
          stay valid for the mission they were built from; this says they are behind. -->
+    <div class="drift noref" id="norefbar" role="status" hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span></span>
+    </div>
     <div class="drift" id="driftbar" role="status" hidden>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
       <span>The flight has changed since these were generated. They still carry the earlier mission.</span>
@@ -774,10 +786,28 @@
     EGY:["2025-09-22"],OMN:["2025-07-14"],IND:["2026-04-09"],FRA:["2026-05-18","PlansHub — EU/DIC Desk"],
     NZL:["2026-02-28"],JOR:["2024-11-30"],BHR:["2025-12-05"],AUS:["2024-08-15"],CAN:["2024-06-20"]};
   let REVIEWED={};
+  // The freshness stamps shipped as a fixed table, so the trust layer claimed every template
+  // was "last verified on <date> by <owner>" while offering nobody any way to record having
+  // checked one. Re-verifications are now kept on this machine and layered over the bundled
+  // defaults, which stay as the floor.
+  let FRESH_LOCAL = {};
+  function loadFreshness(){ try{ FRESH_LOCAL = JSON.parse(localStorage.getItem('dc_freshness')||'{}')||{}; }catch(e){ FRESH_LOCAL={}; } }
+  function recordVerification(iso){
+    const who = (ME.name||'').trim();
+    if(!who){ toast("Set who you are first — a verification needs a name on it"); return; }
+    FRESH_LOCAL[iso] = { date: new Date().toISOString().slice(0,10), owner: who + (ME.unit?' — '+ME.unit:'') };
+    try{ localStorage.setItem('dc_freshness', JSON.stringify(FRESH_LOCAL)); }catch(e){}
+    renderList();
+    if(document.getElementById('verifymodal').classList.contains('show')) paintProv(iso);
+    toast(`${iso} template marked verified today by ${who}`);
+  }
   const MON3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   function fmtDate(iso){ const d=new Date(iso); return d.getDate()+' '+MON3[d.getMonth()]+' '+String(d.getFullYear()).slice(2); }
   function freshness(iso){
-    const e=FRESH[iso]||["2026-01-01"]; const date=e[0], owner=e[1]||OWNER_DEFAULT;
+    const loc=FRESH_LOCAL[iso];
+    const e=FRESH[iso]||["2026-01-01"];
+    const date = loc ? loc.date : e[0];
+    const owner = loc ? loc.owner : (e[1]||OWNER_DEFAULT);
     const mo=Math.max(0,Math.round((Date.now()-new Date(date).getTime())/2.628e9));
     const state=mo<6?'fresh':mo<18?'aging':'stale';
     return {date,owner,mo,state,dot:{fresh:'d-cl',aging:'d-pe',stale:'d-bl'}[state],
@@ -794,13 +824,18 @@
     const rows=[['Aircraft',d.aircraft],['Tail numbers',d.tails],['Callsign',d.callsign],['Captain',d.captain],
       ['Crew',d.crew_n],['From → To',d.sector],['Date',d.date],['Purpose',d.purpose],['Route (ATS)',d.route],['Cargo',d.cargo]];
     document.getElementById('vfTitle').textContent=nm+(legCount()>1?` (${legName(CURLEG)})`:'')+' — verify before send';
-    document.getElementById('vfProv').innerHTML=`<span class="dot ${f.dot}"></span> Template ${hesc(f.label)} ${hesc(fmtDate(f.date))} · owner: ${hesc(f.owner)}`+
-      (f.state==='stale'?' <b style="color:var(--blocked)">— re-verify against the host\'s current form first</b>':'');
+    paintProv(iso);
     document.getElementById('vfData').innerHTML=rows.map(r=>`<tr><td>${hesc(r[0])}</td><td class="mono">${hesc(r[1])||'—'}</td></tr>`).join('');
     document.getElementById('vfBy').value = rv ? rv.by : (ME.name||'');
     document.getElementById('vfState').dataset.iso=iso; document.getElementById('vfState').dataset.leg=CURLEG;
     document.getElementById('vfDone').textContent=rv?`✓ Signed off by ${rv.by} · ${rv.at}`:'';
     document.getElementById('verifymodal').classList.add('show');
+  }
+  function paintProv(iso){
+    const f=freshness(iso), el=document.getElementById('vfProv'); if(!el) return;
+    el.innerHTML = `<span class="dot ${f.dot}"></span> Template ${hesc(f.label)} ${hesc(fmtDate(f.date))} · owner: ${hesc(f.owner)}`
+      + (f.state==='stale' ? ' <b style="color:var(--blocked)">— re-verify against the host\'s current form first</b>' : '')
+      + ` <button class="reverify" onclick="recordVerification('${hesc(iso)}')">I checked it against the host's current form</button>`;
   }
   function closeVerify(){ document.getElementById('verifymodal').classList.remove('show'); }
 
@@ -918,7 +953,9 @@
              <span>${hesc(L.data.sector)}</span><span class="dt">${hesc(L.data.date)} · off ${hesc(L.data.etd)||'—'}</span></div>`
         : '';
       return head + sel.map((c,i)=>{
-        const f = freshness(c.iso); const dcn = `DCR0${42+i}-26${BATCH.legs.length>1?(li?'B':'A'):''}`;
+        // The stamp used to read DCR042-26, DCR043-26 … counted off the list position, so it
+        // changed if you reordered or deselected a country. It now shows the actual reference.
+        const f = freshness(c.iso); const dcn = (L.data.dcr_no && L.data.dcr_no !== 'TBC') ? L.data.dcr_no : 'TBC';
         const d = L.data;
         return `<div class="strip" style="animation-delay:${i*70}ms">
           <span class="bar" style="background:${f.col}"></span>
@@ -940,6 +977,10 @@
         </div>`;
       }).join("");
     }).join("");
+    // A request filed without its reference is one the host cannot track. This gets its own
+    // notice rather than borrowing the drift bar: the drift poller owns that one and would
+    // wipe the message within the second.
+    paintNoRef();
     const total = sel.length * BATCH.legs.length;
     document.getElementById("scount").textContent =
       `${total} ready${BATCH.legs.length>1?` · ${sel.length} each way`:''} · ~${Math.round(total*40)} min saved`;
@@ -1098,7 +1139,7 @@
   }
   function retOverride(){
     return { name:'INBOUND', legs:RET.legs, date:fld('r_date'), etd:fld('r_etd'),
-             capt:fld('r_capt'), crew:fld('r_crew'),
+             capt:fld('r_capt'), crew:fld('r_crew'), dcr:fld('r_dcr'),
              route: RET.legs.map(l=>l.pt).filter(Boolean).join(' — ') };
   }
   function renderRetLegs(){
@@ -1160,7 +1201,10 @@
       ? selTails.map((t,i) => `${t} — ${(i===0 ? capt : (CAPTAINS[t]||'')) || 'TBC'}`).join('; ')
       : capt;
     return {
-      dcr_no:"042-26 (1)", dtd, date: F('f_date','date'),
+      // The clearance reference the host tracks the request by. It was hardcoded to the sample
+      // mission's "042-26 (1)", so every form of every mission carried the same number. It now
+      // comes from the planner's registry; left blank it says TBC rather than claiming one.
+      dcr_no: F('f_dcr','dcr') || 'TBC', dtd, date: F('f_date','date'),
       leg_name: ov ? (ov.name||'INBOUND') : 'OUTBOUND',
       aircraft:`${fld('acnum')} x ${document.getElementById('actype').value}`, type: document.getElementById('actype').value,
       tails: alt.length ? `${prim} (ALT: ${alt.join(', ')})` : prim,
@@ -1238,7 +1282,18 @@
     if(RET.on) legs.push(buildData(retOverride()));
     return legs.map(missionSig).join('||');
   }
-  function checkDrift(){ if(!BATCH) return; markDrift(liveSig() !== BATCH.sig); }
+  function paintNoRef(){
+    const bar = document.getElementById('norefbar'); if(!bar) return;
+    if(!BATCH){ bar.hidden = true; return; }
+    const missing = BATCH.legs.filter(L => L.data.dcr_no === 'TBC').map(L => L.name);
+    bar.hidden = missing.length === 0;
+    if(missing.length){
+      bar.querySelector('span').textContent = BATCH.legs.length > 1
+        ? `No DCR number on the ${missing.map(m=>m.toLowerCase()).join(' or ')} request. Those forms read TBC where the host expects your reference.`
+        : `No DCR number entered. The forms read TBC where the host expects your reference.`;
+    }
+  }
+  function checkDrift(){ if(!BATCH) return; markDrift(liveSig() !== BATCH.sig); paintNoRef(); }
   // Tail numbers, dangerous goods and aircraft type change outside plain input events,
   // so poll as well as listen. Cheap: a string compare on a dozen fields.
   document.addEventListener('input', e => {
@@ -1625,7 +1680,7 @@
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); loadIdentity(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
+  loadSettings(); loadIdentity(); loadFreshness(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
   if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>
