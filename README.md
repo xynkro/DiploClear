@@ -127,7 +127,13 @@ Single file, runs from `file://`. Everything — the templating engines and all 
 is bundled locally. **Nothing leaves the machine**, which is the point: this had to work in a
 place that will not buy or host cloud software.
 
-The passcode screen is presentational; click **Open console**. Deep links: `#console`,
+**The sign-in is a speed bump, not access control.** It gates on a username and password
+whose hashes are in the source rather than the words themselves. That is obfuscation: this is
+one HTML file served from a public repository, so anyone can read it, open devtools or save
+the page, and a six-digit password falls to a moment's brute force. It stops somebody
+wandering in off the URL and nothing more. Treat nothing here as protected by it — the
+templates were cleared for publication before any of this existed, which is what actually
+makes the app safe to publish. Deep links: `#console`,
 `#demo`, `#settings`, `#verify`, `?dark`.
 
 ## The trust layer

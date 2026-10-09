@@ -71,6 +71,8 @@
   #login .linkbtn{color:#9FB3C4}
   #login .linkbtn:hover{color:#fff}
   #login .field label .hint{color:#6B8093}
+  #login .lgerr{margin-top:9px;font-size:12.5px;color:#F0A0A0}
+  #login .lgerr[hidden]{display:none}
   #login .foot{font-size:12px;color:#6B8093;line-height:1.6}
   #login .foot .badge{display:inline-block;font-family:var(--mono);font-size:11px;border:1px solid rgba(255,255,255,.16);border-radius:5px;padding:2px 7px;margin-right:6px;color:#9FB3C4}
   #login .hero{position:relative;background:var(--navy-900);overflow:hidden}
@@ -388,7 +390,15 @@
            file anyone with the file can open, so a passcode box would claim an access control
            that does not exist. What it does need is a name, because every form carries a
            human sign-off and an unattributed one is worth nothing. -->
-      <div id="idsetup">
+      <div id="signin">
+        <div class="field"><label>Username</label><input id="lg_user" autocomplete="username" placeholder="AOCG"></div>
+        <div class="field"><label>Password</label><input id="lg_pass" type="password" autocomplete="current-password"></div>
+        <button class="enter" onclick="trySignIn()">Sign in
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <div class="lgerr" id="lgerr" hidden>Wrong username or password.</div>
+      </div>
+      <div id="idsetup" style="display:none">
         <div class="field"><label>Your name <span class="hint">signs every form you release</span></label>
           <input id="id_name" placeholder="e.g. MAJ Tan" autocomplete="name"></div>
         <div class="field"><label>Unit or desk <span class="hint">optional</span></label>
@@ -404,6 +414,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
         <button class="linkbtn" onclick="changeIdentity()">Not you? Change</button>
+        <button class="linkbtn" onclick="signOut()">Sign out</button>
       </div>
     </div>
     <div class="foot"><span class="badge">OFFLINE</span><span class="badge">SANITISED DATA</span><br>Runs in the browser. Nothing leaves this machine.</div>
@@ -759,6 +770,52 @@
   // The app has no accounts and no passcode: it is a single file, offline, with no secrets
   // to guard, and a login box would assert a control it does not have. What the trust layer
   // genuinely needs is a name to put on a release, so the first screen collects that instead.
+  // ---- the gate ---------------------------------------------------------------------------
+  // Be clear about what this is. The app is one HTML file served from a PUBLIC repository, so
+  // anyone can read this source, open devtools, or save the page. Hashing keeps the words out
+  // of the file, but a six-digit password falls to a moment's brute force and the check runs
+  // on the client regardless. This stops somebody wandering in off the URL. It is not access
+  // control and nothing here should be treated as protected by it.
+  const U_HASH = 0xe23242eb, P_HASH = 0x9995b6aa;
+  function h32(str){
+    let h = 0x811c9dc5;
+    for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h >>> 0;
+  }
+  let UNLOCKED = false;
+  function loadLock(){ try{ UNLOCKED = localStorage.getItem('dc_unlocked') === String(U_HASH ^ P_HASH); }catch(e){ UNLOCKED = false; } }
+  function showStage(){
+    const known = !!(ME.name||'').trim();
+    const el = id => document.getElementById(id);
+    if(el('signin')) el('signin').style.display = UNLOCKED ? 'none' : 'block';
+    if(el('idsetup')) el('idsetup').style.display = (UNLOCKED && !known) ? 'block' : 'none';
+    if(el('idback'))  el('idback').style.display  = (UNLOCKED && known) ? 'block' : 'none';
+  }
+  function trySignIn(){
+    const u = (document.getElementById('lg_user').value||'').trim().toUpperCase();
+    const pw = document.getElementById('lg_pass').value||'';
+    const err = document.getElementById('lgerr');
+    if(h32(u) !== U_HASH || h32(pw) !== P_HASH){
+      err.hidden = false;
+      document.getElementById('lg_pass').value = '';
+      document.getElementById('lg_pass').focus();
+      return;
+    }
+    err.hidden = true;
+    UNLOCKED = true;
+    try{ localStorage.setItem('dc_unlocked', String(U_HASH ^ P_HASH)); }catch(e){}
+    showStage();
+    if((ME.name||'').trim()) enterConsole(); else document.getElementById('id_name').focus();
+  }
+  function signOut(){
+    try{ localStorage.removeItem('dc_unlocked'); }catch(e){}
+    UNLOCKED = false;
+    document.getElementById('console').style.display='none';
+    document.getElementById('login').style.display='';
+    const pw=document.getElementById('lg_pass'); if(pw) pw.value='';
+    showStage();
+  }
+
   let ME = {name:"", unit:""};
   function initials(n){ return (n||"").replace(/\b(MR|MS|MRS|DR|MAJ|CPT|LTC|COL|ME[0-9]|CFC|SLTC)\b/gi,"")
       .trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase() || "—"; }
@@ -766,9 +823,7 @@
     try{ const r=localStorage.getItem('dc_identity'); if(r) ME=JSON.parse(r)||ME; }catch(e){}
     paintIdentity();
     const known = !!(ME.name||"").trim();
-    const a=document.getElementById('idsetup'), b=document.getElementById('idback');
-    if(a) a.style.display = known ? 'none' : 'block';
-    if(b) b.style.display = known ? 'block' : 'none';
+    showStage();
     if(known){
       document.getElementById('id_av').textContent = initials(ME.name);
       document.getElementById('id_who').textContent = ME.name;
@@ -793,6 +848,7 @@
   function changeIdentity(){
     document.getElementById('idback').style.display='none';
     document.getElementById('idsetup').style.display='block';
+    document.getElementById('signin').style.display='none';
     const n=document.getElementById('id_name'); n.value=ME.name||''; 
     document.getElementById('id_unit').value=ME.unit||''; n.focus();
   }
@@ -2045,8 +2101,8 @@
   }
   function resetSettings(){ try{ localStorage.removeItem('dc_settings'); }catch(e){} closeSettings(); toast("Reset — reload the page to restore defaults"); }
 
-  loadSettings(); loadIdentity(); loadFreshness(); renderRoutes(); renderPointList(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
-  if(/^#(console|demo|settings|verify)/.test(location.hash) && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
+  loadSettings(); loadLock(); loadIdentity(); loadFreshness(); renderRoutes(); renderPointList(); renderList(); initFleet(); renderRefData(); renderPresets(); paintStat(); renderLegs();
+  if(/^#(console|demo|settings|verify)/.test(location.hash) && UNLOCKED && (ME.name||'').trim()){ enterConsole(); if(/demo|verify/.test(location.hash)) generate(); if(location.hash.indexOf('settings')>=0) openSettings(); if(location.hash.indexOf('verify')>=0) openVerify('IDN','Indonesia'); }
 </script>
 </body>
 </html>
